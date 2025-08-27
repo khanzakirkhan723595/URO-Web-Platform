@@ -1,0 +1,203 @@
+dambreak_unst_m2.txt      ---> Fichero entrada de malla 
+************************* OPCIONES SALIDA *************
+0                         ---> idetail. Simulation Details.  0-No 1-Yes
+0                         ---> ihotout. write all hotstart files. 0-No 1-Yes
+1  1  0.                  ---> fecha inicio. fechaini. (mes, dia, segundo solar)
+-30                       ---> npas. Number of times to plot. If negative->periodical
+1.                        ---> tout(npas). Time steps to plot. If npas<0 -> T_period
+1                         ---> nidfile1.Id number of the 1st result file (res_N$nidfile1.dat)
+.1                       ---> periodo de calculo de residuos. toutresi
+6                         ---> nptsal. Numero de puntos salida
+2.65	1.15
+2.65	-0.60
+4.00	1.15
+4.00	-0.80
+5.20	0.30
+-1.87	1.10
+2                         ---> interpolwse. Interpolation from nodes to vertex. 0-h 1-wse
+1                         ---> isalxy. x-y coordinates output. 0-No 1-Yes
+1                         ---> isalzbed. Bed elevation output. 0-No 1-Yes
+0                         ---> isalarea. Element area output. 0-No 1-Yes
+0                         ---> isaldtloc. Local timestep output. 0-No 1-Yes
+1                         ---> isalh. Water depth output. 0-No 1-Yes
+1                         ---> isalwse. Water surface elevation output. 0-No 1-Yes
+1                         ---> isalvel. Velocity output. 0-No 1-Yes
+0                         ---> isalq. Specific discharge output. 0-No 1-Yes
+0                         ---> isaltf. Bed friction output. 0-No 1-Yes
+0                         ---> isaldispmom. Momentum dispersion output. 0-No 1-Yes
+0                         ---> isalrisk. Flood risk region. 0-No 1-Yes
+0                         ---> isaltimeflood. Tiempo inundado. 0-No 1-Yes
+0                         ---> isalvisct. Eddy viscosity output. 0-No 1-Yes
+0                         ---> isalkt. Turbulent kinetic energy output. 0-No 1-Yes
+0                         ---> isaleps. Turbulent dissipation rate output. 0-No 1-Yes
+0                         ---> isalrstr. Reynolds stresses output. 0-No 1-Yes
+0                         ---> isalelder. Elder long dispersion coef output. 0-No 1-Yes
+0                         ---> isaldcrit. Critical diameter output. 0-No 1-Yes
+0                         ---> isalder. Velocity gradients output. 0-No 1-Yes
+0                         ---> isalvort. Vorticity output. 0-No 1-Yes
+0                         ---> isalpowdissip. Power dissipation output. 0-No 1-Yes 
+0                         ---> isalcurv. Streamline curvature output. 0-No 1-Yes
+0                         ---> isalcf. Bed roughness output. 0-No 1-Yes
+0                         ---> isalhmax. Maximum water depth output. 0-No 1-Yes
+0                         ---> isalwsemax. Maximum water surface elevation output. 0-No 1-Yes
+0                         ---> isalvelmax. Maximum velocity output. 0-No 1-Yes
+0                         ---> isalqmax. Maximum specific discharge output. 0-No 1-Yes
+0                         ---> isalriskmax. Maximum flood risk region. 0-No 1-Yes
+************************* PARAMETROS NUMERICOS ********
+31                        ---> iupwind.Upwind scheme. 10-HLL 11-HLLC 12-HLLCC 20-Roe 30-HLL/Decoupled 31-Decoupled 40-FVS
+0.                        ---> diffusive stabilisation factor in mass conservation. dvtwse. (only if iupwind=31)
+0                         ---> iuptfbed. Upwind bed friction (only in Roe1/Roe122). 0-No 1-Yes
+1                             ---> iordns.Orden de precision en espacio NS (1,2,122)
+0.0d0                     ---> fijmuscl. Upwind derivative factor for second order (MUSCL) 0-upwind 1-centred
+2                         ---> iolimiter. Slope limiter. 1-Superbee 2-Minmod
+-1.0d0                        ---> epsreg. eps for Harten regul >0.Elena <0.Brufau
+1.d-3                     ---> epsdzdx.  eps for dzdx in diff.wave (Hunter2005)
+11                        ---> ischemeke. Numerical scheme for KE 11-upwind 20-centred 21-gamma 22-MUSCL
+0.5                       ---> betamke. betam for ke. only if ischemeke=21 [0.1-0.5] [0.5-more stable]
+1                         ---> iwdsharp. Sharp fronts. 0-No 1-Yes
+1.d-6                     ---> epswd.   Wet-Dry tolerance for hydrodynamics
+1.d-2                     ---> epswdcd. Wet-Dry tolerance for transport equations
+0                         ---> iwdstab. Wet-Dry stabilisation. 0-No 1-Mild 2-Strong
+0                         ---> iwdcdstab.Wet-Dry stabilisation in transport eqns. 0-No 1-Yes (NOT conservative in wd fronts)
+1.d10                     ---> dcurvaturemax. Maximum curvature for secondary flows corrections
+1                             ---> iordt. Orden de precision en tiempo (1,2)
+1.d0                      ---> dtmax 
+0.9d0                         ---> CFL 
+10.d6                     ---> Froude limiter. dfrmax
+************************* HIDRODINAMICA *********************
+1                         ---> Solve Hydrodynamic.isolns. 0-No 1-2DSWE 2-Diffusive wave 3-Read hot files
+0                         ---> First hot file. ihotini
+47                        ---> Last  hot file. ihotfin 
+1800.                     ---> Lag time between files. thotlag
+1000.                     ---> water reference density (kg/m3). rhow
+1.0d-6                    ---> Viscosidad laminar (m2/s). viscl
+1                         ---> Bed friction. iotfbed. 0-lam 1-Man 2-Keu 3-Liso 4-Trans 5-Cf 6-Dunes
+0.01d0                    ---> Cf (n, Ks, Cf) Si <0 -> por fichero
+cf_fondo.dat              ---> Fichero con cf para cada vertice. Solo se usa si Cf<0
+0                         ---> Dispersion of momentum. idispmom. 0-No 1-Long 2-Long+Trans (NOTA: VER dsecdamp en SEDIMENTOS)
+0                         ---> Coriolis force.icoriolis. 0-No 1-Yes
+42.                       ---> Latitude (sexagesimal degrees) 
+0                         ---> Wind stress.iwind. 0-No 1-cte 2-File
+0.d0                      ---> Wind Vx (a 10m de altura) 
+0.d0                      ---> Wind Vy (a 10m de altura) 
+wind_vel.dat              ---> File with wind (Vx,Vy). 
+0                         ---> Sumideros.  0-No 1-Yes(File). isumid.
+sumideros.dat             ---> Fichero con parametros de sumideros. filesumidero
+0                         ---> Conexiones. 0-No 1-Yes(File). iconex.
+conexiones.dat            ---> Fichero con conexiones entre elementos. fileconexion
+0                         ---> Discharge source. iodisc. 0-No 1-Yes 
+1                         ---> Number of discharge files
+discharge1.dat            ---> Disch source file. filedisc
+************************* TURBULENCE ****************************
+0                         ---> Compute diffusion in 2D-SWE.icompdif. 0-No 1-Yes
+0                         ---> Solve Turbulence.   isoltm.   0-No 1-Yes   3-Read hot files
+0                         ---> Turb.Model(1.Par,2.ML,3.KE-RR,31.KE-BJ,32.KE-BC,41.ASM)
+1.d0                      ---> Turbulence mixing factor. dmixfs
+0                         ---> Turbulence filtering. iturfilt. (0-No 1-PANS 2-FilterSize)
+1.  1.                    ---> PANS coefficients. fpans(2)
+0.1                       ---> Filter size for URANS(m). furans.
+1.                        ---> tinimean. Initial time for computation of Urans means
+************************* HYDROLOGIC PROCESSES ******************
+0                         ---> Hydrologic Processes. ihydrology. 0-No 1-Yes
+datos_hydrology.dat       ---> Sewer network definition. filehydrology
+************************* RED DE TUBERIAS ***********************
+0                         ---> Sewer network. isewernet. 0-No 1-Yes
+datos_sewer.dat           ---> Sewer network definition. filesewer
+************************* TRANSPORTE CONVECCION-DIFUSION ********
+0.d0                      ---> Laminar diffusivity (m2/s).diflcd.
+1.7                       ---> Schmidt number.schtcd.
+************************* CALIDAD DE AGUAS **********************
+0                         ---> iwaterquality. Calidad de aguas. 0-No 1-Yes
+datos_wq.dat              ---> filewqdata. water quality definition.
+************************* TRANSPORTE SEDIMENTOS *****************
+0                         ---> isedimentos. Sedimentos. 0-No 1-Yes
+datos_sed.dat             ---> fileseddata. sediment transport definition.
+************************* OLEAJE ********************************
+0                         ---> iwaves. include waves. 0-No 1-Read from file 
+datos_waves.dat           ---> filewavedata. waves definition.
+************************* HABITAT FLUVIAL ***********************
+0                         ---> ihabitat. solve habitat fluvial. 0-No 1-Yes
+datos_habitat.dat         ---> filehabitatdata. habitat fluvial definition
+************************* CONDICIONES INICIALES *******
+1                         ---> CI flujo. icelev.         0.Water depth 1.WSE
+3                         ---> CI flujo. icswe.          1.Restart 2.Uniform 3.initial_swe.dat
+0                         ---> CI fondo. iczbed. 0.No    1.Restart 
+2                         ---> CI K-eps. ictur.  0.Canal 1.Restart 2.Uniform 3.initial_tur.dat  
+2                         ---> CI dissolved oxygen.icdod.1.Restart 2.Uniform 3.initial_dod.dat
+2                         ---> CI DBO. icdbo.            1.Restart 2.Uniform 3.initial_dbo.dat
+2                         ---> CI Nitrog organic.icdnorg.1.Restart 2.Uniform 3.initial_dnorg.dat
+2                         ---> CI Nitrog amonio.icdamon. 1.Restart 2.Uniform 3.initial_damon.dat
+2                         ---> CI Nitrog nitrat.icdnitr. 1.Restart 2.Uniform 3.initial_nitr.dat
+2                         ---> CI Coliformes. icdcf.     1.Restart 2.Uniform 3.initial_dcf.dat
+2                         ---> CI temperature. ictemp.   1.Restart 2.Uniform 3.initial_temp.dat
+2                         ---> CI salinity. icsalt.      1.Restart 2.Uniform 3.initial_salt.dat
+2                         ---> CI sed suspension.iccs.   1.Restart 2.Uniform 3.initial_cs.dat
+1.d0                      ---> Wse or depth (m)  (if icelev=1 or 2)
+0.d0                      ---> vx (m/s)  
+0.d0                      ---> vy (m/s)  
+1.d-4                     ---> kt (m2/s2)   if ictur=2
+1.d-4                     ---> eps(m2/s3)   if ictur=2 
+0.01d0                    ---> dod(Kg/m3)   if icdod=2
+0.01d0                    ---> dbo(Kg/m3)   if icdbo=2
+0.01d0                    ---> dnorg(Kg/m3) if icdnorg=2
+0.01d0                    ---> damon(Kg/m3) if icdamon=2
+0.01d0                    ---> dnitr(Kg/m3) if icdnitr=2
+0.01d0                    ---> dcf(cfu/100ml) if icdcf=2
+0.01d0                    ---> temp (K)   if ictemp=2
+0.01d0                    ---> salt (Kg_salt/Kg_water) if icsalt=2
+0.01d0                    --->  cs (m3_sed/m3_water)    if iccs=2 
+************************* CONDICIONES DE CONTORNO ***** 
+1                         ---> Log-Law.itfwalldef. 0-slip 1-loglaw 2-no slip
+-1.d-3                    ---> dkswalldef(m). Wall Ks(m). if dkswall<=0 -> smooth wall. only used if itfwalldef=1
+1                         ---> Number of boundaries
+0                         ---> Via intenso desague. idesague 0-No 1-Si
+rio.dat                   ---> Via intenso desague. filecauce
+0                            ---> ngauges. Number of gauges 
+*Boundary 1 (open boundary condition)
+0                         ---> Open/Wall/Inner boundary. ibcin. 0-open boundary  1-wall boundary  2-internal condition
+0                         ---> BC for Q. iobcq <0-file 0-free 1-total(m3/s) 2-unit(m2/s) 3-Weir -3:Q(zs) 999:Vx.Vy gauges
+0.0d0                     ---> BC for Q. Q/V entrada (xbcq)  or  cweir(1:3) if iobcq=4  
+5                         ---> BC for H. iobch.<0-file 0-free 1-h 2-wse 3-dhdn=0 4-dZs/dn=0 5-hcrit  999:gauges
+0.d0                      ---> BC for H. h(m) - wse(m) - dhdn - dZs/dn .xbch.  
+1.d0                      ---> BC for kt  (m2/s2)           .xbckt.  Only imposed if inlet flow      
+1.d0                      ---> BC for eps (m2/s3)           .xbceps. Si >0 se toma cte. Si <0 canal uniforme
+1                         ---> BC for OD                    .iobcdod.  <0-file 0-free 1-cte 2-saturacion
+1.d0                      ---> BC for OD  (Kg/m3)           .xbcdod. Only imposed if inlet flow
+1                         ---> BC for DBO                   .iobcdbo.  <0-file 0-free 1-cte 
+1.d0                      ---> BC for DBO (Kg/m3)           .xbcdbo. Only imposed if inlet flow
+1                         ---> BC for Norg                  .iobcdnorg.<0-file 0-free 1-cte 
+1.d0                      ---> BC for Norg(Kg/m3)           .xbcdnorg.Only imposed if inlet flow
+1                         ---> BC for Namonio               .iobcdamon.<0-file 0-free 1-cte 
+1.d0                      ---> BC for Namonio(Kg/m3)        .xbcdamon.Only imposed if inlet flow
+1                         ---> BC for Nnitrat               .iobcdnitr.<0-file 0-free 1-cte 
+1.d0                      ---> BC for Nnitrat(Kg/m3)        .xbcdnitr.Only imposed if inlet flow
+1                         ---> BC for Coliformes            .iobcdcf.  <0-file 0-free 1-cte 
+1.d0                      ---> BC for Coliformes (cfu/100ml)   .xbcdcf. Only imposed if inlet flow
+1                         ---> BC for Temperature           .iobctemp. <0-file 0-free 1-cte 
+1.d0                      ---> BC for Temperature(K)        .xbctemp.Only imposed if inlet flow
+1                         ---> BC for Salt                  .iobcsalt. <0-file 0-free 1-cte 
+1.d0                      ---> BC for Salt(Kg_salt/Kg_water).xbcsalt.Only imposed if inlet flow
+1                         ---> BC for CS                    .iobccs.   <0-file 0-free 1-cte 
+1.d0                      ---> BC for CS  (m3_sed/m3_water) .xbccs.    Only imposed if inlet flow
+0.5  0.4  0.1             ---> BC for CS. Fraction distribution at inlet. xbccsmix(i,j)
+1                         ---> BC for bedload. iobcqsb. 0-dqs/dn=0 1-total(m3/s) 2-unit(m2/s) 
+0.d0                      ---> BC for bedload. xbcqsb. only if iobcqsb=1,2
+0.5  0.4  0.1             ---> BC for bedload. Fraction distribution at inlet. xbcqsbmix(i,j)
+0                         ---> BC for Zb. iobcbed. 0-free 1-bedelev 2-steady(dzdt=0)
+0.d0                      ---> BC for Zb. xbcbed.  only if iobcbed=1. bed elevation(m)
+0                         ---> BC for groundwater flow. iobcqsub. 0-Closed 1-Open
+0                         ---> ibcstab. Open boundary condition stabilisation. 0-No 1-Yes
+0.                        ---> dbcstab. stabilisation distance (m)
+none_h1.txt               ---> h.vs.t for boundary 1.    Only used if iobch(boundary1)<0 
+none_q1.dat               ---> q.vs.t for boundary 1.    Only used if iobcq(boundary1)<0 
+none_dod1.dat             ---> dod.vs.t for boundary 1.  Only used if iobcdod(boundary1)<0 
+none_dbo1.dat             ---> dbo.vs.t for boundary 1.  Only used if iobcdbo(boundary1)<0 
+none_dnorg1.dat           ---> dnorg.vs.t for boundary 1.  Only used if iobcdnorg(boundary1)<0 
+none_damon1.dat           ---> damon.vs.t for boundary 1.  Only used if iobcdamon(boundary1)<0 
+none_dnitr1.dat           ---> dnitr.vs.t for boundary 1.  Only used if iobcdnitr(boundary1)<0 
+none_dcf1.dat             ---> dcf.vs.t for boundary 1.  Only used if iobcdcf(boundary1)<0 
+none_temp1.dat            ---> temp.vs.t for boundary 1. Only used if iobctemp(boundary1)<0 
+none_salt1.dat            ---> salt.vs.t for boundary 1. Only used if iobcsalt(boundary1)<0 
+none_cs1.dat              ---> cs.vs.t   for boundary 1. Only used if iobccs(boundary1)<0 
+
+
