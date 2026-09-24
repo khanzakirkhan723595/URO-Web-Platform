@@ -1,8 +1,10 @@
-// src/pages/FloodModel.jsx (Previously InlandFloodModel.jsx)
+
+
+// src/pages/FloodModel.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import FileUpload from '../components/FileUpload';
 import ProgressBar from '../components/ProgressBar';
-import PlotDisplay from '../components/PlotDisplay'; // Updated
+import PlotDisplay from '../components/PlotDisplay';
 import FeedbackForm from '../components/FeedbackForm';
 import FeedbackListDisplay from '../components/FeedbackListDisplay';
 import SimulationHistoryDisplay from '../components/SimulationHistoryDisplay';
@@ -12,7 +14,7 @@ import {
     getSimulationHistory as apiGetSimulationHistory
 } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { Info, Droplets, FileText, MapPin } from 'lucide-react'; // Added MapPin
+import { Droplets, MapPin } from 'lucide-react';
 
 const MODEL_NAME = "FloodModel";
 
@@ -37,7 +39,7 @@ const FloodModel = () => {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyError, setHistoryError] = useState('');
 
-  const [selectedPlotPoint, setSelectedPlotPoint] = useState(null); // State for clicked plot point
+  const [selectedPlotPoint, setSelectedPlotPoint] = useState(null);
 
   const modelExecutionTime = import.meta.env.VITE_MODEL_EXECUTION_TIME_SECONDS || "60";
 
@@ -111,7 +113,8 @@ const FloodModel = () => {
     URL.revokeObjectURL(a.href);
   };
 
-  const handleRunModel = async () => {
+  // UPDATED: Accepts execution time from FileUpload
+  const handleRunModel = async (customExecutionTime) => {
     if (!hydrographFile && !hydrographFileContent) {
       setModelRunError('Hydrograph data is mandatory.');
       return;
@@ -121,18 +124,32 @@ const FloodModel = () => {
     setRawPltData(null); // Clear previous plot before new run
     setProgress(0);
     setStatusMessage('Preparing model run...');
+
     const formData = new FormData();
-    if (hydrographFile) formData.append('hydrographFile', hydrographFile, 'Hydrograph.txt');
-    else if (hydrographFileContent) formData.append('hydrographFile', new Blob([hydrographFileContent], { type: 'text/plain' }), 'Hydrograph.txt');
-    if (tideFile) formData.append('tideFile', tideFile, 'tide.txt');
-    else if (tideFileContent) formData.append('tideFile', new Blob([tideFileContent], { type: 'text/plain' }), 'tide.txt');
-    formData.append('executionTime', modelExecutionTime);
+    if (hydrographFile) {
+      formData.append('hydrographFile', hydrographFile, 'Hydrograph.txt');
+    } else if (hydrographFileContent) {
+      formData.append('hydrographFile', new Blob([hydrographFileContent], { type: 'text/plain' }), 'Hydrograph.txt');
+    }
+
+    if (tideFile) {
+      formData.append('tideFile', tideFile, 'tide.txt');
+    } else if (tideFileContent) {
+      formData.append('tideFile', new Blob([tideFileContent], { type: 'text/plain' }), 'tide.txt');
+    }
+
+    // Appends customized execution time or defaults
+    const timeToRun = customExecutionTime || modelExecutionTime || "60";
+    formData.append('executionTime', timeToRun);
     formData.append('modelName', MODEL_NAME);
+
     try {
       const onUploadProgress = (event) => setProgress(Math.min(Math.round((event.loaded * 100) / event.total) * 0.2, 20));
-      // ... (timeouts for progress simulation) ...
+
       const response = await apiRunModel(formData, onUploadProgress);
-      setProgress(90); setStatusMessage('Processing results...');
+      setProgress(90); 
+      setStatusMessage('Processing results...');
+
       if (response.success && response.pltData) {
         setRawPltData(response.pltData);
         setModelRunError('');
@@ -145,7 +162,8 @@ const FloodModel = () => {
     } catch (err) {
       const errorMessage = err.message || (err.error ? err.error.toString() : 'An unknown error occurred.');
       setModelRunError(`Failed to run model: ${errorMessage}`);
-      setProgress(100); setStatusMessage(`Error: ${errorMessage.substring(0,100)}...`);
+      setProgress(100); 
+      setStatusMessage(`Error: ${errorMessage.substring(0,100)}...`);
     } finally {
       setLoadingModel(false);
     }
@@ -162,15 +180,13 @@ const FloodModel = () => {
     setStatusMessage(`Loaded history from ${new Date(historyItem.runAt).toLocaleString()}. Inputs ready.`);
     setProgress(-1);
     setModelRunError('');
-    setSelectedPlotPoint(null); // Clear any previously selected plot point
+    setSelectedPlotPoint(null);
     window.scrollTo({ top: 0, behavior: 'smooth' }); 
   };
 
-  // Handler for plot point click
   const handlePlotPointClick = (pointData) => {
     console.log("Plot point clicked:", pointData);
     setSelectedPlotPoint(pointData);
-    // Future: Could open a modal or display info elsewhere on the page
   };
 
   return (
@@ -179,8 +195,7 @@ const FloodModel = () => {
         <div className="flex flex-col md:flex-row items-center md:space-x-8">
           <div className="md:w-2/3">
             <h1 className="text-3xl sm:text-4xl font-bold text-blue-700 mb-4 flex items-center heading-primary">
-              {/* <Info size={32} className="mr-3 text-blue-500" /> */}
-              Flood Model {/* Updated Name */}
+              Flood Model
             </h1>
             <p className="text-slate-600 leading-relaxed mb-3 text-base sm:text-lg">
               This model simulates flood extent and depth from heavy rainfall, river overflow, or dam breaks using computational fluid dynamics.
@@ -219,7 +234,6 @@ const FloodModel = () => {
                   <p className="font-semibold">Model Operation Failed</p><p>{modelRunError}</p>
               </div>
           )}
-          {/* Display selected plot point info (optional simple display) */}
           {selectedPlotPoint && (
             <div className="mt-4 p-4 bg-blue-50 border-l-4 border-blue-500 text-blue-700 rounded-md shadow-md">
                 <h4 className="font-semibold text-md mb-2 flex items-center"><MapPin size={18} className="mr-2"/>Selected Point Data:</h4>
@@ -234,7 +248,7 @@ const FloodModel = () => {
           {rawPltData && !loadingModel && ( 
             <PlotDisplay 
                 pltData={rawPltData} 
-                onPointClick={handlePlotPointClick} // Pass the handler
+                onPointClick={handlePlotPointClick}
             /> 
           )}
           {!rawPltData && !loadingModel && !modelRunError && (

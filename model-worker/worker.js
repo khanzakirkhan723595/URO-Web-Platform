@@ -1,259 +1,204 @@
-// -----------------------------------------------------------------------------
-// File: model-worker/worker.js
-// -----------------------------------------------------------------------------
+// // -----------------------------------------------------------------------------
+// // File: model-worker/worker.js
+// // -----------------------------------------------------------------------------
+
 const express = require('express');
-const dotenv = require('dotenv');
-const cors = require('cors');
 const multer = require('multer');
-const fs = require('fs').promises; // Use promise-based fs
-const { existsSync, mkdirSync } = require('fs'); // Synchronous for setup
-const path = require('path');
 const { spawn } = require('child_process');
-const rimraf = require('rimraf'); // For cleaning output directory
+const path = require('path');
+const fs = require('fs').promises;
+const fsSync = require('fs');
+const dotenv = require('dotenv');
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-// Configuration from .env
-const FLOOD_MODEL_EXE_PATH = process.env.FLOOD_MODEL_EXE_PATH;
-const MODEL_INPUT_DIR = path.resolve(process.env.MODEL_INPUT_DIR || './FloodModel/Inputs/');
-const MODEL_OUTPUT_DIR = path.resolve(process.env.MODEL_OUTPUT_DIR || './FloodModel/Output/');
-const MODEL_OUTPUT_PLT_FILENAME = process.env.MODEL_OUTPUT_PLT_FILENAME; // Can be optional now
-const MODEL_TIME_PROMPT_STRING = process.env.MODEL_TIME_PROMPT_STRING;
+// --- Load Environment Variables ---
+const FLOOD_MODEL_EXE_PATH = process.env.FLOOD_MODEL_EXE_PATH || './FloodModel/flood_model.exe';
+const MODEL_INPUT_DIR = process.env.MODEL_INPUT_DIR || './FloodModel/Inputs';
+const MODEL_OUTPUT_DIR = process.env.MODEL_OUTPUT_DIR || './FloodModel/Output';
+const MODEL_TIME_PROMPT_STRING = process.env.MODEL_TIME_PROMPT_STRING || 'Enter duration of Simulation in sec';
 
-// Standardized input filenames expected by the model
-const HYDROGRAPH_FILENAME = 'Hydrograph.txt';
-const TIDE_FILENAME = 'tide.txt';
+// Ensure required directories exist
+if (!fsSync.existsSync(MODEL_INPUT_DIR)) fsSync.mkdirSync(MODEL_INPUT_DIR, { recursive: true });
+if (!fsSync.existsSync(MODEL_OUTPUT_DIR)) fsSync.mkdirSync(MODEL_OUTPUT_DIR, { recursive: true });
 
-
-// CORS configuration
-const corsOptions = {
-  origin: process.env.CORS_ORIGIN_BACKEND || 'http://localhost:5000',
-  optionsSuccessStatus: 200
-};
-app.use(cors(corsOptions));
-app.use(express.json());
-
-// --- Directory Setup ---
-if (!existsSync(MODEL_INPUT_DIR)) mkdirSync(MODEL_INPUT_DIR, { recursive: true });
-if (!existsSync(MODEL_OUTPUT_DIR)) mkdirSync(MODEL_OUTPUT_DIR, { recursive: true });
-
-if (!FLOOD_MODEL_EXE_PATH || !existsSync(path.resolve(FLOOD_MODEL_EXE_PATH))) {
-    console.error(`FATAL ERROR: flood_model.exe not found at specified path: ${FLOOD_MODEL_EXE_PATH}`);
-    process.exit(1);
-} else {
-    console.log(`Flood model executable found at: ${path.resolve(FLOOD_MODEL_EXE_PATH)}`);
-}
-if (!MODEL_TIME_PROMPT_STRING) {
-    console.warn("Warning: MODEL_TIME_PROMPT_STRING is not set in .env. Interaction for time input might fail.");
-}
-
-// --- Multer setup for file uploads from backend ---
-// Files are named by the backend as HYDROGRAPH_FILENAME and TIDE_FILENAME
+// --- Configure Multer Storage for Uploaded Files ---
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, MODEL_INPUT_DIR);
-  },
-  filename: function (req, file, cb) {
-    // The backend sends files with standardized names (Hydrograph.txt, tide.txt)
-    // So, file.originalname here will be those standardized names.
-    cb(null, file.originalname); 
-  }
+  destination: (req, file, cb) => cb(null, MODEL_INPUT_DIR),
+  filename: (req, file, cb) => cb(null, file.originalname)
 });
-const upload = multer({ storage: storage });
 
+const upload = multer({ storage });
 
-// --- Helper function to clean the output directory ---
+// --- Helper Function to Clean Output Directory (Native fs.rm) ---
 async function cleanOutputDir() {
   try {
-    await new Promise((resolve, reject) => {
-        rimraf(path.join(MODEL_OUTPUT_DIR, '*'), (err) => { // Cleans all files and folders within output dir
-            if (err && err.code !== 'ENOENT') reject(err); // Ignore if dir is already empty/gone
-            else resolve();
-        });
-    });
+    const files = await fs.readdir(MODEL_OUTPUT_DIR);
+    for (const file of files) {
+      await fs.rm(path.join(MODEL_OUTPUT_DIR, file), { recursive: true, force: true });
+    }
     console.log(`Successfully cleaned output directory: ${MODEL_OUTPUT_DIR}`);
   } catch (error) {
-    console.error(`Failed to clean output directory ${MODEL_OUTPUT_DIR}:`, error);
+    console.error(`Failed to clean output directory ${MODEL_OUTPUT_DIR}:`, error.message);
   }
 }
 
-// --- Helper function to delete specific uploaded input files ---
-async function deleteUploadedInputFiles(uploadedFiles) {
-    const deletionPromises = [];
-    if (uploadedFiles.hydrographFile) {
-        const filePath = path.join(MODEL_INPUT_DIR, HYDROGRAPH_FILENAME);
-        deletionPromises.push(
-            fs.unlink(filePath)
-              .then(() => console.log(`Deleted uploaded input file: ${filePath}`))
-              .catch(err => console.warn(`Could not delete input file ${filePath}: ${err.message}`)) // Warn if deletion fails
-        );
-    }
-    if (uploadedFiles.tideFile) {
-        const filePath = path.join(MODEL_INPUT_DIR, TIDE_FILENAME);
-         deletionPromises.push(
-            fs.unlink(filePath)
-              .then(() => console.log(`Deleted uploaded input file: ${filePath}`))
-              .catch(err => console.warn(`Could not delete input file ${filePath}: ${err.message}`))
-        );
-    }
-    await Promise.all(deletionPromises);
-}
+// --- Main Model Execution Route (Supports both /model-worker/execute and /execute) ---
+app.post(
+  ['/model-worker/execute', '/execute'],
+  upload.fields([
+    { name: 'hydrographFile', maxCount: 1 },
+    { name: 'tideFile', maxCount: 1 }
+  ]),
+  async (req, res) => {
+    console.log('Model execution request received.');
 
-// --- Helper function to find the output PLT file ---
-async function findOutputPltFile() {
-    // 1. If a specific filename is given in .env, try that first.
-    if (MODEL_OUTPUT_PLT_FILENAME) {
-        const specificPath = path.join(MODEL_OUTPUT_DIR, MODEL_OUTPUT_PLT_FILENAME);
-        try {
-            await fs.access(specificPath);
-            console.log(`Using specified output file: ${specificPath}`);
-            return specificPath;
-        } catch (err) {
-            console.warn(`Specified output file ${MODEL_OUTPUT_PLT_FILENAME} not found. Searching for other .plt files.`);
-        }
+    // Clean previous output files before starting new run
+    await cleanOutputDir();
+
+    const executionTime = req.body.executionTime || '60';
+    const exeResolvedPath = path.resolve(FLOOD_MODEL_EXE_PATH);
+
+    if (!fsSync.existsSync(exeResolvedPath)) {
+      return res.status(500).json({
+        success: false,
+        message: `Executable not found at path: ${exeResolvedPath}`
+      });
     }
 
-    // 2. If not found or not specified, search for the newest .plt file.
-    const files = await fs.readdir(MODEL_OUTPUT_DIR);
-    const pltFiles = files.filter(file => file.toLowerCase().endsWith('.plt'));
+    console.log(`Executing model: ${exeResolvedPath}`);
 
-    if (pltFiles.length === 0) {
-        return null; // No .plt file found
-    }
-
-    if (pltFiles.length === 1) {
-        console.log(`Found one .plt file: ${pltFiles[0]}`);
-        return path.join(MODEL_OUTPUT_DIR, pltFiles[0]); // Only one .plt file
-    }
-
-    // Find the newest .plt file if multiple exist
-    let newestFile = null;
-    let newestTime = 0;
-    for (const file of pltFiles) {
-        const filePath = path.join(MODEL_OUTPUT_DIR, file);
-        const stats = await fs.stat(filePath);
-        if (stats.mtimeMs > newestTime) {
-            newestTime = stats.mtimeMs;
-            newestFile = filePath;
-        }
-    }
-    console.log(`Found newest .plt file: ${path.basename(newestFile)}`);
-    return newestFile;
-}
-
-
-// --- Route to execute the model ---
-app.post('/model-worker/execute', upload.fields([
-    { name: 'hydrographFile', maxCount: 1 }, // Expects 'Hydrograph.txt'
-    { name: 'tideFile', maxCount: 1 }      // Expects 'tide.txt'
-  ]), async (req, res) => {
-
-  console.log('Model execution request received.');
-  const executionTime = req.body.executionTime || "60"; 
-  const uploadedFiles = {
-      hydrographFile: req.files && req.files.hydrographFile,
-      tideFile: req.files && req.files.tideFile
-  };
-
-  if (!FLOOD_MODEL_EXE_PATH) {
-    return res.status(500).json({ success: false, message: 'Flood model executable path not configured on worker.' });
-  }
-
-  try {
-    await cleanOutputDir(); // Clean output directory before model run
-
-    console.log(`Executing model: ${path.resolve(FLOOD_MODEL_EXE_PATH)}`);
-    const modelProcess = spawn(path.resolve(FLOOD_MODEL_EXE_PATH), [], { cwd: path.dirname(path.resolve(FLOOD_MODEL_EXE_PATH)) });
+    // Spawn C++ / Fortran Model Process
+    const modelProcess = spawn(exeResolvedPath, [], {
+      cwd: path.dirname(exeResolvedPath)
+    });
 
     let modelOutput = '';
     let modelError = '';
     let promptDetected = false;
 
+    // Fallback timer: Send executionTime if stdout buffering delays prompt detection
+    const autoSendTimer = setTimeout(() => {
+      if (!promptDetected) {
+        console.log(`Auto-sending execution time (${executionTime}) as fallback...`);
+        modelProcess.stdin.write(executionTime + '\n');
+        promptDetected = true;
+      }
+    }, 500);
+
+    // --- Combined stdout Listener: Prompt Handling + Progress Logging ---
     modelProcess.stdout.on('data', (data) => {
       const outputChunk = data.toString();
       modelOutput += outputChunk;
-      console.log(`Model stdout: ${outputChunk.trim()}`);
-      if (MODEL_TIME_PROMPT_STRING && outputChunk.includes(MODEL_TIME_PROMPT_STRING) && !promptDetected) {
+
+      // 1. PROMPT DETECTION: Check if process asks for simulation time
+      if (
+        outputChunk.toLowerCase().includes(MODEL_TIME_PROMPT_STRING.toLowerCase()) &&
+        !promptDetected
+      ) {
         promptDetected = true;
+        clearTimeout(autoSendTimer);
         console.log(`Prompt detected. Sending execution time: ${executionTime}`);
         modelProcess.stdin.write(executionTime + '\n');
+        return;
+      }
+
+      // 2. PROGRESS LOGGING: Parse simulation timesteps from stdout
+      const lines = outputChunk.trim().split('\n');
+      const lastLine = lines[lines.length - 1];
+
+      if (lastLine) {
+        const parts = lastLine.trim().split(/\s+/);
+        const currentStep = parseInt(parts[parts.length - 1], 10);
+
+        if (!isNaN(currentStep) && currentStep > 0) {
+          const totalSteps = parseInt(executionTime, 10);
+          const percent = Math.min(Math.round((currentStep / totalSteps) * 100), 100);
+          console.log(`[Model Progress] Step ${currentStep} / ${totalSteps} (${percent}%)`);
+        } else {
+          console.log(`Model stdout: ${lastLine}`);
+        }
       }
     });
 
     modelProcess.stderr.on('data', (data) => {
-      const errorChunk = data.toString();
-      modelError += errorChunk;
-      console.error(`Model stderr: ${errorChunk.trim()}`);
+      modelError += data.toString();
+      console.error(`Model stderr: ${data.toString().trim()}`);
     });
 
     modelProcess.on('close', async (code) => {
+      clearTimeout(autoSendTimer);
       console.log(`Model process exited with code ${code}`);
-      await deleteUploadedInputFiles(uploadedFiles); // Delete uploaded inputs regardless of model success/failure
+
+      // Cleanup input files after execution
+      if (req.files.hydrographFile) {
+        await fs.unlink(req.files.hydrographFile[0].path).catch(() => {});
+        console.log(`Deleted uploaded input file: ${req.files.hydrographFile[0].path}`);
+      }
+      if (req.files.tideFile) {
+        await fs.unlink(req.files.tideFile[0].path).catch(() => {});
+        console.log(`Deleted uploaded input file: ${req.files.tideFile[0].path}`);
+      }
 
       if (code !== 0) {
-        return res.status(500).json({ 
-            success: false, 
-            message: `Model execution failed with code ${code}.`,
-            details: modelError || modelOutput
+        return res.status(500).json({
+          success: false,
+          message: `Model executable failed with exit code ${code}. Error: ${modelError}`
         });
       }
 
-      const outputFilePath = await findOutputPltFile();
-      if (!outputFilePath) {
-        console.error(`No .PLT output file found in ${MODEL_OUTPUT_DIR}.`);
-        return res.status(500).json({ 
-            success: false, 
-            message: `Model ran, but no .PLT output file was found in ${MODEL_OUTPUT_DIR}.`,
-            details: modelOutput // Send model's stdout for debugging
-        });
-      }
-      
-      console.log(`Attempting to read output file: ${outputFilePath}`);
+      // Locate output .plt file
       try {
-        const pltData = await fs.readFile(outputFilePath, 'utf-8');
+        const files = await fs.readdir(MODEL_OUTPUT_DIR);
+        const pltFile = files.find((file) => file.endsWith('.plt'));
+
+        if (!pltFile) {
+          return res.status(500).json({
+            success: false,
+            message: 'Model executed successfully but no output .plt file was generated.'
+          });
+        }
+
+        const pltPath = path.join(MODEL_OUTPUT_DIR, pltFile);
+        console.log(`Attempting to read output file: ${pltPath}`);
+
+        const pltData = await fs.readFile(pltPath, 'utf-8');
         console.log(`Successfully read PLT file. Length: ${pltData.length}`);
-        return res.status(200).json({
+
+        res.json({
           success: true,
-          message: 'Model executed and output retrieved.',
-          pltData: pltData,
+          message: 'Model executed successfully.',
+          pltData
         });
-      } catch (fileError) {
-        console.error(`Error accessing or reading PLT file (${outputFilePath}):`, fileError);
-        return res.status(500).json({ 
-            success: false, 
-            message: `Model ran, but failed to retrieve output PLT file. Error: ${fileError.message}`,
+      } catch (err) {
+        res.status(500).json({
+          success: false,
+          message: `Failed to read output file: ${err.message}`
         });
       }
     });
 
-    modelProcess.on('error', async (err) => {
-        console.error('Failed to start model process:', err);
-        await deleteUploadedInputFiles(uploadedFiles); // Attempt cleanup even if process fails to start
-        return res.status(500).json({ success: false, message: `Failed to start model executable: ${err.message}` });
+    modelProcess.on('error', (err) => {
+      clearTimeout(autoSendTimer);
+      console.error(`Failed to start model process: ${err.message}`);
+      res.status(500).json({
+        success: false,
+        message: `Failed to start model process: ${err.message}`
+      });
     });
-
-  } catch (error) {
-    console.error('Error in /model-worker/execute:', error);
-    // Attempt to clean up uploaded files if an error occurs before model process handling
-    await deleteUploadedInputFiles(uploadedFiles).catch(e => console.error("Cleanup error during main catch:", e));
-    res.status(500).json({ success: false, message: `Worker internal error: ${error.message}` });
   }
-});
-
-app.get('/model-worker/health', (req, res) => {
-  res.status(200).json({ status: 'UP', message: 'Model worker is healthy' });
-});
+);
 
 app.listen(PORT, () => {
+  console.log(`Flood model executable found at: ${path.resolve(FLOOD_MODEL_EXE_PATH)}`);
   console.log(`Model Worker server running on port ${PORT}`);
-  console.log(`--- Model Configuration ---`);
-  console.log(`EXE Path: ${path.resolve(FLOOD_MODEL_EXE_PATH || "")}`);
-  console.log(`Input Dir: ${MODEL_INPUT_DIR}`);
-  console.log(`Output Dir: ${MODEL_OUTPUT_DIR}`);
-  console.log(`Output PLT (Preferred): ${MODEL_OUTPUT_PLT_FILENAME || "Not set, will search *.plt"}`);
+  console.log('--- Model Configuration ---');
+  console.log(`EXE Path: ${path.resolve(FLOOD_MODEL_EXE_PATH)}`);
+  console.log(`Input Dir: ${path.resolve(MODEL_INPUT_DIR)}`);
+  console.log(`Output Dir: ${path.resolve(MODEL_OUTPUT_DIR)}`);
   console.log(`Time Prompt: "${MODEL_TIME_PROMPT_STRING}"`);
-  console.log(`---------------------------`);
+  console.log('---------------------------');
 });

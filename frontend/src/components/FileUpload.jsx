@@ -1,27 +1,31 @@
-// src/components/FileUpload.jsx
-import React, { useState, useEffect } from 'react'; // Added useEffect
-import { UploadCloud, FileText, AlertCircle, Download, RotateCcw } from 'lucide-react';
+
+// export default FileUpload;
+
+import React, { useState, useEffect } from 'react';
+import { UploadCloud, FileText, AlertCircle, Download, RotateCcw, Clock, Gauge } from 'lucide-react';
 
 const FileUpload = ({ 
   onFilesSelected, 
   onRunModel, 
   loading, 
   error,
-  hydrographFileForDownload, // Can be File object or string content
-  tideFileForDownload,       // Can be File object or string content
-  pltDataForDownload,        // String content
+  hydrographFileForDownload, 
+  tideFileForDownload,       
+  pltDataForDownload,        
   onDownloadFile,
-  initialHydrographName = '', // New prop for pre-filled name
-  initialTideName = ''        // New prop for pre-filled name
+  initialHydrographName = '', 
+  initialTideName = ''        
 }) => {
-  const [hydrographFile, setHydrographFile] = useState(null); // Stores the File object
-  const [tideFile, setTideFile] = useState(null);             // Stores the File object
+  const [hydrographFile, setHydrographFile] = useState(null); 
+  const [tideFile, setTideFile] = useState(null); 
   
-  // These states will hold the names to be displayed, whether from a new File or initial prop
+  // Simulation Mode States
+  const [simMode, setSimMode] = useState('capped'); // 'capped' or 'full'
+  const [executionTime, setExecutionTime] = useState(120); // User typed seconds
+  
   const [displayHydrographName, setDisplayHydrographName] = useState('');
   const [displayTideName, setDisplayTideName] = useState('');
 
-  // Effect to set display names from initial props (e.g., when loading from history)
   useEffect(() => {
     setDisplayHydrographName(initialHydrographName);
   }, [initialHydrographName]);
@@ -29,7 +33,6 @@ const FileUpload = ({
   useEffect(() => {
     setDisplayTideName(initialTideName);
   }, [initialTideName]);
-
 
   const handleFileChange = (event, fileType) => {
     const file = event.target.files[0];
@@ -46,15 +49,14 @@ const FileUpload = ({
         setDisplayTideName(file.name);
         currentTideFile = file;
       }
-      // Pass the actual File objects up
       onFilesSelected({ hydrograph: currentHydroFile, tide: currentTideFile });
     }
   };
   
   const handleRunClick = () => {
-    // The parent (FloodModel.jsx) will check if hydrographFile or hydrographFileContent exists.
-    // This component primarily deals with newly selected files.
-    onRunModel();
+    // If Full Event, pass 86400 (or max duration); if Quick Preview, pass custom typed time
+    const runTime = simMode === 'full' ? 86400 : (Number(executionTime) || 60);
+    onRunModel(runTime);
   };
 
   const handleResetFiles = () => {
@@ -62,12 +64,20 @@ const FileUpload = ({
     setTideFile(null);
     setDisplayHydrographName('');
     setDisplayTideName('');
-    // Notify parent that files are cleared, so it can clear its content states too
     onFilesSelected({ hydrograph: null, tide: null }); 
   };
 
+  // Compute real clock-time estimate (Server processes ~4s of simulation per 1s real time)
+  const calculateRealWaitTime = (simSeconds) => {
+    const realSeconds = Math.ceil(simSeconds / 4);
+    if (realSeconds < 60) return `~${realSeconds} seconds`;
+    const minutes = Math.floor(realSeconds / 60);
+    const remainingSecs = realSeconds % 60;
+    return `~${minutes} min ${remainingSecs > 0 ? `${remainingSecs}s` : ''}`;
+  };
+
   const FileInputBox = ({ id, label, displayFileName, onChange, fileType, accept }) => (
-    <div className="mb-4"> {/* Reduced mb-6 to mb-4 */}
+    <div className="mb-4">
       <label htmlFor={id} className="block text-sm font-medium text-slate-700 mb-1">
         {label} {fileType === 'hydrograph' && <span className="text-red-500">*</span>}
       </label>
@@ -96,17 +106,17 @@ const FileUpload = ({
   );
 
   return (
-    <div className="w-full p-6 bg-white shadow-xl rounded-lg space-y-6"> {/* Adjusted padding and space-y */}
+    <div className="w-full p-6 bg-white shadow-xl rounded-lg space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold text-slate-800">Simulation Inputs</h2>
         {(displayHydrographName || displayTideName) && (
-             <button
-                onClick={handleResetFiles}
-                title="Clear selected files"
-                className="text-xs text-slate-500 hover:text-red-600 flex items-center p-1 rounded hover:bg-slate-100"
-            >
-                <RotateCcw size={14} className="mr-1" /> Clear Files
-            </button>
+          <button
+            onClick={handleResetFiles}
+            title="Clear selected files"
+            className="text-xs text-slate-500 hover:text-red-600 flex items-center p-1 rounded hover:bg-slate-100"
+          >
+            <RotateCcw size={14} className="mr-1" /> Clear Files
+          </button>
         )}
       </div>
       
@@ -127,8 +137,69 @@ const FileUpload = ({
         fileType="tide"
         accept=".txt"
       />
+
+      {/* --- MANUAL TIME INPUT & ESTIMATE --- */}
+      <div className="p-4 border rounded-md bg-slate-50 space-y-3">
+        <label className="block text-sm font-semibold text-slate-700 flex items-center">
+          <Gauge size={16} className="mr-1.5 text-blue-600" />
+          Simulation Mode
+        </label>
+
+        <div className="flex gap-4">
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input 
+              type="radio" 
+              name="simMode" 
+              value="capped" 
+              checked={simMode === 'capped'} 
+              onChange={() => setSimMode('capped')} 
+              className="text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm text-slate-700 font-medium">Custom Duration</span>
+          </label>
+
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input 
+              type="radio" 
+              name="simMode" 
+              value="full" 
+              checked={simMode === 'full'} 
+              onChange={() => setSimMode('full')} 
+              className="text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm text-slate-700 font-medium">Full Event</span>
+          </label>
+        </div>
+
+        {simMode === 'capped' ? (
+          <div>
+            <label htmlFor="execution-time" className="block text-xs font-medium text-slate-600 mb-1 flex items-center">
+              <Clock size={14} className="mr-1 text-slate-500" />
+              Enter Simulation Duration (Seconds)
+            </label>
+            <input
+              id="execution-time"
+              type="number"
+              min="10"
+              max="86400"
+              value={executionTime}
+              onChange={(e) => setExecutionTime(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 text-sm bg-white"
+              placeholder="e.g. 180"
+            />
+            <p className="text-xs text-blue-600 font-medium mt-1.5">
+              ⏱ Estimated Real Wait Time: {calculateRealWaitTime(Number(executionTime) || 0)}
+            </p>
+          </div>
+        ) : (
+          <div className="p-2.5 bg-blue-50 border-l-4 border-blue-500 text-blue-800 text-xs rounded">
+            <p className="font-semibold mb-0.5">Full Event Run (24 Hours / 86,400s):</p>
+            <p>⏱ Estimated Real Wait Time: ~5.5 hours to compute full hydrograph event.</p>
+          </div>
+        )}
+      </div>
       
-      {error && ( // Displaying error passed from parent
+      {error && (
         <div className="p-3 bg-red-50 border-l-4 border-red-400 text-red-700 rounded-md flex items-center text-sm">
           <AlertCircle size={20} className="mr-2 flex-shrink-0" />
           <span>{typeof error === 'object' ? JSON.stringify(error) : error}</span>
@@ -137,7 +208,7 @@ const FileUpload = ({
 
       <button
         onClick={handleRunClick}
-        disabled={loading || (!hydrographFile && !initialHydrographName)} // Disable if no file and no initial content
+        disabled={loading || (!hydrographFile && !initialHydrographName)}
         className={`btn-primary w-full flex justify-center py-3 px-4 text-sm font-medium rounded-md shadow-sm 
                     ${(loading || (!hydrographFile && !initialHydrographName)) ? 'opacity-60 cursor-not-allowed' : ''}
                     transition-opacity duration-150 ease-in-out`}
@@ -145,17 +216,17 @@ const FileUpload = ({
         {loading ? 'Processing Model...' : 'Run Flood Model'}
       </button>
 
-      {/* Download section for currently loaded/selected inputs and last output */}
       {(hydrographFileForDownload || tideFileForDownload || pltDataForDownload) && (
         <div className="pt-4 border-t border-slate-200">
           <h3 className="text-md font-medium text-slate-700 mb-2">Current Data for Download</h3>
           <div className="space-y-2">
             {hydrographFileForDownload && (
               <button
-                onClick={() => onDownloadFile(hydrographFileForDownload, 
-                    hydrographFileForDownload instanceof File ? hydrographFileForDownload.name : 'hydrograph_history.txt', 
-                    'text/plain', 
-                    typeof hydrographFileForDownload === 'string'
+                onClick={() => onDownloadFile(
+                  hydrographFileForDownload, 
+                  hydrographFileForDownload instanceof File ? hydrographFileForDownload.name : 'hydrograph_history.txt', 
+                  'text/plain', 
+                  typeof hydrographFileForDownload === 'string'
                 )}
                 className="btn-secondary w-full text-xs flex items-center justify-center px-3 py-1.5"
               >
@@ -164,10 +235,11 @@ const FileUpload = ({
             )}
             {tideFileForDownload && (
               <button
-                onClick={() => onDownloadFile(tideFileForDownload, 
-                    tideFileForDownload instanceof File ? tideFileForDownload.name : 'tide_history.txt',
-                    'text/plain',
-                    typeof tideFileForDownload === 'string'
+                onClick={() => onDownloadFile(
+                  tideFileForDownload, 
+                  tideFileForDownload instanceof File ? tideFileForDownload.name : 'tide_history.txt',
+                  'text/plain',
+                  typeof tideFileForDownload === 'string'
                 )}
                 className="btn-secondary w-full text-xs flex items-center justify-center px-3 py-1.5"
               >

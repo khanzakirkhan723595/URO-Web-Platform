@@ -1,3 +1,4 @@
+
 // backend/server.js
 const express = require('express');
 const dotenv = require('dotenv');
@@ -15,7 +16,12 @@ const adminRoutes = require('./routes/adminRoutes');
 const statsRoutes = require('./routes/statsRoutes');
 const historyRoutes = require('./routes/historyRoutes'); // New history routes
 
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '8.8.4.4']);
+
 dotenv.config({ path: path.resolve(__dirname, './.env') });
+
+
 
 const app = express();
 const PORT = process.env.PORT || 5000;

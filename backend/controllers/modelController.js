@@ -1,3 +1,4 @@
+
 // backend/controllers/modelController.js
 const axios = require('axios');
 const dotenv = require('dotenv');
@@ -57,7 +58,7 @@ exports.runModelController = async (req, res, next) => {
 
     console.log(`Forwarding request to model worker at ${MODEL_WORKER_URL}/execute for model: ${modelNameFromBody}`);
     
-    const workerResponse = await axios.post(`${MODEL_WORKER_URL}/execute`, formData, {
+    const workerResponse = await axios.post(`${MODEL_WORKER_URL}/model-worker/execute`, formData, {
       headers: { ...formData.getHeaders() },
       responseType: 'json' 
     });
