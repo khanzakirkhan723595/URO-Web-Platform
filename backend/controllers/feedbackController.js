@@ -1,123 +1,68 @@
 // backend/controllers/feedbackController.js
 const Feedback = require('../models/Feedback');
+const AppError = require('../utils/AppError');
 
-// Handles both creating new feedback and updating existing feedback by a user for a model
+// Public lists show only the author's NAME (never e-mail addresses).
+const PUBLIC_USER_FIELDS = 'name';
+const OWN_USER_FIELDS = 'name email';
+
 exports.submitOrUpdateFeedback = async (req, res, next) => {
   try {
     const { modelName, rating, comment } = req.body;
-    const userId = req.user.id; // From protect middleware
 
-    if (!modelName || rating === undefined) {
-      return res.status(400).json({ status: 'fail', message: 'Model name and rating are required.' });
+    if (typeof modelName !== 'string' || !/^[A-Za-z0-9_-]{1,50}$/.test(modelName)) {
+      return next(new AppError('A valid model name is required.', 400));
     }
-    if (typeof rating !== 'number' || rating < 0 || rating > 5) {
-        return res.status(400).json({ status: 'fail', message: 'Rating must be a number between 0 and 5.' });
+    if (typeof rating !== 'number' || !Number.isFinite(rating) || rating < 1 || rating > 5) {
+      return next(new AppError('Rating must be a number between 1 and 5.', 400));
     }
-
-    let feedback = await Feedback.findOne({ user: userId, modelName: modelName });
-
-    let isNew = false;
-    if (feedback) {
-      // Update existing feedback
-      feedback.rating = rating;
-      feedback.comment = comment;
-      feedback.updatedAt = Date.now();
-      // Retain original status unless explicitly changed by admin functions
-      // feedback.status = 'new'; // Or 'updated' if you add such a status
-    } else {
-      // Create new feedback
-      feedback = new Feedback({
-        user: userId,
-        modelName,
-        rating,
-        comment,
-        // status will default to 'new'
-      });
-      isNew = true;
+    if (comment !== undefined && comment !== null && (typeof comment !== 'string' || comment.length > 1000)) {
+      return next(new AppError('Comment must be text of at most 1000 characters.', 400));
     }
 
-    await feedback.save();
+    // Single atomic upsert: no race between "find" and "create"
+    const existing = await Feedback.exists({ user: req.user.id, modelName });
+    const feedback = await Feedback.findOneAndUpdate(
+      { user: req.user.id, modelName },
+      { $set: { rating, comment: (comment || '').trim(), updatedAt: new Date() }, $setOnInsert: { status: 'new', createdAt: new Date() } },
+      { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
+    )
+      .populate('user', OWN_USER_FIELDS)
+      .populate('repliedBy', PUBLIC_USER_FIELDS);
 
-    // Populate user details for the response, even for update
-    const populatedFeedback = await Feedback.findById(feedback._id)
-                                        .populate('user', 'name email')
-                                        .populate('repliedBy', 'name email');
-
-    res.status(isNew ? 201 : 200).json({
+    res.status(existing ? 200 : 201).json({
       status: 'success',
-      message: isNew ? 'Feedback submitted successfully.' : 'Feedback updated successfully.',
-      data: {
-        feedback: populatedFeedback,
-      },
+      message: existing ? 'Feedback updated successfully.' : 'Feedback submitted successfully.',
+      data: { feedback },
     });
   } catch (error) {
-    console.error('SUBMIT/UPDATE FEEDBACK ERROR:', error);
-    if (error.code === 11000) { // MongoDB duplicate key error
-        // This should ideally not happen if frontend checks first, but as a fallback
-        return res.status(409).json({ status: 'fail', message: 'Database error: Unique constraint violated. This feedback might already exist under a different ID if logic failed.' });
-    }
-    res.status(500).json({ status: 'error', message: 'Could not submit or update feedback. ' + error.message });
+    next(error);
   }
 };
 
-// Get feedback for a specific model (public list)
 exports.getFeedbackForModel = async (req, res, next) => {
   try {
-    const { modelName } = req.params;
-    if (!modelName) {
-      return res.status(400).json({ status: 'fail', message: 'Model name parameter is required.' });
-    }
+    const feedbacks = await Feedback.find({ modelName: req.params.modelName, status: { $ne: 'archived' } })
+      .populate('user', PUBLIC_USER_FIELDS)
+      .populate('repliedBy', PUBLIC_USER_FIELDS)
+      .sort('-createdAt')
+      .limit(200)
+      .lean();
 
-    const feedbacks = await Feedback.find({ modelName: modelName, status: { $ne: 'archived' } })
-      .populate('user', 'name email')
-      .populate('repliedBy', 'name email')
-      .sort('-createdAt');
-
-    res.status(200).json({
-      status: 'success',
-      results: feedbacks.length,
-      data: {
-        feedbacks,
-      },
-    });
+    res.status(200).json({ status: 'success', results: feedbacks.length, data: { feedbacks } });
   } catch (error) {
-    console.error('GET FEEDBACK FOR MODEL ERROR:', error);
-    res.status(500).json({ status: 'error', message: 'Could not retrieve feedback for the model.' });
+    next(error);
   }
 };
 
-// Get the current logged-in user's feedback for a specific model
 exports.getCurrentUserFeedbackForModel = async (req, res, next) => {
-    try {
-        const { modelName } = req.params;
-        const userId = req.user.id; // From protect middleware
+  try {
+    const feedback = await Feedback.findOne({ user: req.user.id, modelName: req.params.modelName })
+      .populate('user', OWN_USER_FIELDS)
+      .populate('repliedBy', PUBLIC_USER_FIELDS);
 
-        if (!modelName) {
-            return res.status(400).json({ status: 'fail', message: 'Model name parameter is required.' });
-        }
-
-        const feedback = await Feedback.findOne({ user: userId, modelName: modelName })
-                                     .populate('user', 'name email') // Optional: user details are already in req.user
-                                     .populate('repliedBy', 'name email');
-        
-        if (!feedback) {
-            // It's not an error if user hasn't submitted feedback yet
-            return res.status(200).json({
-                status: 'success',
-                data: {
-                    feedback: null // Indicate no feedback found
-                }
-            });
-        }
-
-        res.status(200).json({
-            status: 'success',
-            data: {
-                feedback,
-            },
-        });
-    } catch (error) {
-        console.error('GET CURRENT USER FEEDBACK FOR MODEL ERROR:', error);
-        res.status(500).json({ status: 'error', message: 'Could not retrieve your feedback for this model.' });
-    }
+    res.status(200).json({ status: 'success', data: { feedback: feedback || null } });
+  } catch (error) {
+    next(error);
+  }
 };

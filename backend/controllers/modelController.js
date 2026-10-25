@@ -1,143 +1,104 @@
-
 // backend/controllers/modelController.js
 const axios = require('axios');
-const dotenv = require('dotenv');
 const FormData = require('form-data');
-const fs = require('fs'); // Require fs for reading file content
-const path = require('path'); // For path operations
-const SimulationHistory = require('../models/SimulationHistory'); // Import the new model
+const fs = require('fs');
+const SimulationHistory = require('../models/SimulationHistory');
+const AppError = require('../utils/AppError');
+const config = require('../config/env');
 
-dotenv.config();
-
-const MODEL_WORKER_URL = process.env.MODEL_WORKER_URL;
 const MAX_HISTORY_ITEMS = 3; // Max history items per user per model
+const MAX_EXECUTION_SECONDS = 86400; // 24 h of simulated time
+
+const removeTempFiles = (...files) =>
+  Promise.all(
+    files
+      .filter(Boolean)
+      .map((f) => fs.promises.unlink(f.path).catch((err) => err.code !== 'ENOENT' && console.error('Temp file cleanup failed:', err.message)))
+  );
 
 exports.runModelController = async (req, res, next) => {
-  const hydrographFile = req.files.hydrographFile[0];
-  const tideFile = req.files.tideFile ? req.files.tideFile[0] : null;
-  const modelNameFromBody = req.body.modelName || "UnknownModel"; // Get modelName from request body
+  const hydrographFile = req.files && req.files.hydrographFile && req.files.hydrographFile[0];
+  const tideFile = req.files && req.files.tideFile ? req.files.tideFile[0] : null;
 
   try {
-    if (!MODEL_WORKER_URL) {
-        const err = new Error("MODEL_WORKER_URL is not configured in the backend environment.");
-        err.status = 500;
-        throw err;
+    if (!hydrographFile) throw new AppError('Hydrograph.txt file is mandatory.', 400);
+    if (!config.modelWorkerUrl) throw new AppError('The model service is not configured on the server.', 500);
+
+    const modelName = typeof req.body.modelName === 'string' && /^[A-Za-z0-9_-]{1,50}$/.test(req.body.modelName)
+      ? req.body.modelName
+      : 'UnknownModel';
+
+    const executionSeconds = Number(req.body.executionTime ?? 60);
+    if (!Number.isFinite(executionSeconds) || executionSeconds < 1 || executionSeconds > MAX_EXECUTION_SECONDS) {
+      throw new AppError(`executionTime must be a number between 1 and ${MAX_EXECUTION_SECONDS}.`, 400);
     }
+    const executionTime = String(Math.round(executionSeconds));
 
-    const executionTime = req.body.executionTime || "60";
-
-    // Read input file contents for history BEFORE sending to worker and deleting
-    let hydrographContent = '';
-    let tideContent = null;
-    try {
-        hydrographContent = await fs.promises.readFile(hydrographFile.path, 'utf-8');
-        if (tideFile) {
-            tideContent = await fs.promises.readFile(tideFile.path, 'utf-8');
-        }
-    } catch (readError) {
-        console.error("Error reading input files for history:", readError);
-        // Decide if this should be a fatal error or just log and continue
-        // For now, we'll log and continue, history might miss this run's inputs.
-    }
-
+    // Read the inputs for history before the temp files are removed
+    const [hydrographContent, tideContent] = await Promise.all([
+      fs.promises.readFile(hydrographFile.path, 'utf-8'),
+      tideFile ? fs.promises.readFile(tideFile.path, 'utf-8') : Promise.resolve(null),
+    ]);
 
     const formData = new FormData();
-    formData.append('hydrographFile', fs.createReadStream(hydrographFile.path), {
-        filename: 'Hydrograph.txt',
-        contentType: hydrographFile.mimetype,
-    });
-
-    if (tideFile) {
-      formData.append('tideFile', fs.createReadStream(tideFile.path), {
-        filename: 'tide.txt',
-        contentType: tideFile.mimetype,
-      });
-    }
-    
+    formData.append('hydrographFile', fs.createReadStream(hydrographFile.path), { filename: 'Hydrograph.txt', contentType: 'text/plain' });
+    if (tideFile) formData.append('tideFile', fs.createReadStream(tideFile.path), { filename: 'tide.txt', contentType: 'text/plain' });
     formData.append('executionTime', executionTime);
 
-    console.log(`Forwarding request to model worker at ${MODEL_WORKER_URL}/execute for model: ${modelNameFromBody}`);
-    
-    const workerResponse = await axios.post(`${MODEL_WORKER_URL}/model-worker/execute`, formData, {
-      headers: { ...formData.getHeaders() },
-      responseType: 'json' 
+    const workerResponse = await axios.post(`${config.modelWorkerUrl}/model-worker/execute`, formData, {
+      headers: formData.getHeaders(),
+      responseType: 'json',
+      timeout: config.modelWorkerTimeoutMs,
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
     });
 
-    // Cleanup temporary files
-    const unlinkPromises = [];
-    unlinkPromises.push(fs.promises.unlink(hydrographFile.path).catch(err => console.error("Error deleting hydrograph temp file:", err)));
-    if (tideFile) {
-      unlinkPromises.push(fs.promises.unlink(tideFile.path).catch(err => console.error("Error deleting tide temp file:", err)));
+    if (!workerResponse.data || !workerResponse.data.success || !workerResponse.data.pltData) {
+      throw new AppError(workerResponse.data?.message || 'The model service returned an unexpected response.', 502);
     }
-    await Promise.all(unlinkPromises);
 
-
-    if (workerResponse.data && workerResponse.data.success) {
-      // If user is logged in, save simulation history
-      if (req.user && workerResponse.data.pltData && hydrographContent) { // req.user comes from authMiddleware.protect
-        try {
-          await SimulationHistory.create({
-            user: req.user.id,
-            modelName: modelNameFromBody, // Use the modelName from the request
-            hydrographInput: hydrographContent,
-            tideInput: tideContent,
-            executionTimeRequested: executionTime,
-            pltOutputData: workerResponse.data.pltData,
-          });
-
-          // Maintain only the latest MAX_HISTORY_ITEMS
-          const userHistories = await SimulationHistory.find({ 
-            user: req.user.id, 
-            modelName: modelNameFromBody 
-          }).sort({ runAt: -1 }); // Newest first
-
-          if (userHistories.length > MAX_HISTORY_ITEMS) {
-            const historiesToDelete = userHistories.slice(MAX_HISTORY_ITEMS);
-            for (const oldHistory of historiesToDelete) {
-              await SimulationHistory.findByIdAndDelete(oldHistory._id);
-            }
-          }
-        } catch (historyError) {
-          console.error("Error saving simulation history:", historyError);
-          // Do not let history saving failure break the main response to user
-        }
-      }
-
-      res.status(200).json({
-        success: true,
-        message: 'Model executed successfully by worker.',
-        pltData: workerResponse.data.pltData,
+    // Save history, but never let a history problem hide a successful result
+    try {
+      await SimulationHistory.create({
+        user: req.user.id,
+        modelName,
+        hydrographInput: hydrographContent,
+        tideInput: tideContent,
+        executionTimeRequested: executionTime,
+        pltOutputData: workerResponse.data.pltData,
       });
-    } else {
-      const err = new Error(workerResponse.data.message || 'Model worker failed to execute or returned unexpected response.');
-      err.status = (workerResponse.status !== 200) ? workerResponse.status : 502;
-      throw err;
+
+      // Keep only the newest MAX_HISTORY_ITEMS runs (one query to find ids, one to delete)
+      const old = await SimulationHistory.find({ user: req.user.id, modelName })
+        .sort({ runAt: -1 })
+        .skip(MAX_HISTORY_ITEMS)
+        .select('_id')
+        .lean();
+      if (old.length) await SimulationHistory.deleteMany({ _id: { $in: old.map((d) => d._id) } });
+    } catch (historyError) {
+      console.error('Error saving simulation history:', historyError.message);
     }
 
+    res.status(200).json({
+      success: true,
+      status: 'success',
+      message: 'Model executed successfully.',
+      pltData: workerResponse.data.pltData,
+    });
   } catch (error) {
-    console.error('Error in runModelController:', error.message);
-    
-    const cleanupPromisesOnError = [];
-    if (hydrographFile && hydrographFile.path && fs.existsSync(hydrographFile.path)) {
-        cleanupPromisesOnError.push(fs.promises.unlink(hydrographFile.path).catch(err => console.error("Error deleting hydrograph temp file on error:", err)));
-    }
-    if (tideFile && tideFile.path && fs.existsSync(tideFile.path)) {
-        cleanupPromisesOnError.push(fs.promises.unlink(tideFile.path).catch(err => console.error("Error deleting tide temp file on error:", err)));
-    }
-    if(cleanupPromisesOnError.length > 0) {
-        await Promise.all(cleanupPromisesOnError);
-    }
-    
     if (axios.isAxiosError(error)) {
-        const detailedError = new Error(
-            `Error communicating with model worker: ${error.message}. ` +
-            (error.response ? `Status: ${error.response.status}, Data: ${JSON.stringify(error.response.data)}` : 'No response from worker.')
-        );
-        detailedError.status = error.response ? error.response.status : 503;
-        next(detailedError);
-    } else {
-        if (!error.status) error.status = 500;
-        next(error);
+      // Log worker details on the server, but show a clean message to the user
+      console.error('Model worker error:', error.message, error.response?.status);
+      if (error.code === 'ECONNABORTED') return next(new AppError('The model took too long to respond.', 504));
+      if (error.response) {
+        const workerMessage = typeof error.response.data?.message === 'string' ? error.response.data.message : null;
+        return next(new AppError(workerMessage || 'The model service reported an error.', 502));
+      }
+      return next(new AppError('The model service is currently unavailable. Please try again later.', 503));
     }
+    next(error);
+  } finally {
+    // Always remove temporary files (success OR failure)
+    await removeTempFiles(hydrographFile, tideFile);
   }
 };

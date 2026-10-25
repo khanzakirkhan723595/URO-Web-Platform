@@ -2,20 +2,15 @@
 const express = require('express');
 const feedbackController = require('../controllers/feedbackController');
 const authMiddleware = require('../middleware/authMiddleware');
+const { validateModelName } = require('../middleware/validate');
 
 const router = express.Router();
 
-// Public route to get all (non-archived) feedback for a specific model
-router.get('/:modelName', feedbackController.getFeedbackForModel);
+// Logged-in user routes (declared BEFORE the public "/:modelName" so "/user/..." is never swallowed)
+router.post('/', authMiddleware.protect, feedbackController.submitOrUpdateFeedback);
+router.get('/user/:modelName', authMiddleware.protect, validateModelName, feedbackController.getCurrentUserFeedbackForModel);
 
-// All routes below this require user to be logged in
-router.use(authMiddleware.protect);
-
-// User submits new feedback or updates their existing feedback for a model
-router.post('/', feedbackController.submitOrUpdateFeedback); // Changed controller
-
-// Get the current logged-in user's feedback for a specific model
-router.get('/user/:modelName', feedbackController.getCurrentUserFeedbackForModel);
-
+// Public: feedback list for a model (non-archived, names only)
+router.get('/:modelName', validateModelName, feedbackController.getFeedbackForModel);
 
 module.exports = router;

@@ -2,171 +2,141 @@
 const Feedback = require('../models/Feedback');
 const User = require('../models/User');
 const VisitorLog = require('../models/VisitorLog');
-// const ContactRequest = require('../models/ContactRequest'); // TODO: Create this model
-// const TeamApplication = require('../models/TeamApplication'); // TODO: Create this model
+const ContactMessage = require('../models/ContactMessage');
+const AppError = require('../utils/AppError');
+
+const FEEDBACK_STATUSES = ['new', 'seen', 'replied', 'archived'];
 
 // --- Feedback Management ---
 exports.getAllFeedback = async (req, res, next) => {
   try {
-    const feedbacks = await Feedback.find()
-      .populate('user', 'name email') // Populate user details
-      .populate('repliedBy', 'name email') // Populate admin who replied
-      .sort('-createdAt'); // Sort by newest first
+    const filter = {};
+    if (req.query.status && FEEDBACK_STATUSES.includes(req.query.status)) filter.status = req.query.status;
 
-    res.status(200).json({
-      status: 'success',
-      results: feedbacks.length,
-      data: {
-        feedbacks,
-      },
-    });
+    const feedbacks = await Feedback.find(filter)
+      .populate('user', 'name email')
+      .populate('repliedBy', 'name email')
+      .sort('-createdAt')
+      .limit(1000)
+      .lean();
+
+    res.status(200).json({ status: 'success', results: feedbacks.length, data: { feedbacks } });
   } catch (error) {
-    console.error('ADMIN GET ALL FEEDBACK ERROR:', error);
-    res.status(500).json({ status: 'error', message: 'Could not retrieve feedback.' });
+    next(error);
   }
 };
 
 exports.replyToFeedback = async (req, res, next) => {
   try {
-    const feedbackId = req.params.id;
     const { adminReply } = req.body;
-
-    if (!adminReply) {
-      return res.status(400).json({ status: 'fail', message: 'Admin reply content is required.' });
+    if (typeof adminReply !== 'string' || !adminReply.trim()) {
+      return next(new AppError('Admin reply content is required.', 400));
     }
+    if (adminReply.length > 2000) return next(new AppError('Reply is too long (max 2000 characters).', 400));
 
-    const feedback = await Feedback.findById(feedbackId);
-    if (!feedback) {
-      return res.status(404).json({ status: 'fail', message: 'Feedback not found.' });
-    }
+    const feedback = await Feedback.findByIdAndUpdate(
+      req.params.id,
+      { adminReply: adminReply.trim(), status: 'replied', repliedAt: new Date(), repliedBy: req.user.id },
+      { new: true, runValidators: true }
+    )
+      .populate('user', 'name email')
+      .populate('repliedBy', 'name email');
 
-    feedback.adminReply = adminReply;
-    feedback.status = 'replied';
-    feedback.repliedAt = Date.now();
-    feedback.repliedBy = req.user.id; // Admin user making the reply
-
-    await feedback.save();
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        feedback,
-      },
-    });
+    if (!feedback) return next(new AppError('Feedback not found.', 404));
+    res.status(200).json({ status: 'success', data: { feedback } });
   } catch (error) {
-    console.error('ADMIN REPLY TO FEEDBACK ERROR:', error);
-    res.status(500).json({ status: 'error', message: 'Could not update feedback with reply.' });
+    next(error);
   }
 };
 
 exports.updateFeedbackStatus = async (req, res, next) => {
-    try {
-        const feedbackId = req.params.id;
-        const { status } = req.body; // e.g., "seen", "archived"
-
-        if (!status || !['new', 'seen', 'replied', 'archived'].includes(status)) {
-            return res.status(400).json({ status: 'fail', message: 'Valid status is required.' });
-        }
-
-        const feedback = await Feedback.findByIdAndUpdate(feedbackId, { status }, {
-            new: true, // Return the updated document
-            runValidators: true,
-        });
-
-        if (!feedback) {
-            return res.status(404).json({ status: 'fail', message: 'Feedback not found.' });
-        }
-        res.status(200).json({ status: 'success', data: { feedback } });
-    } catch (error) {
-        console.error('ADMIN UPDATE FEEDBACK STATUS ERROR:', error);
-        res.status(500).json({ status: 'error', message: 'Could not update feedback status.' });
-    }
-};
-
-
-// --- Site Statistics (Detailed for Admin) ---
-// The public /api/stats/summary is already created.
-// This could be for more detailed or user-specific stats if needed.
-exports.getAdminSiteStats = async (req, res, next) => {
   try {
-    const totalPageHits = await VisitorLog.countDocuments();
-    const uniqueIPs = await VisitorLog.distinct('ipAddress');
-    const totalRegisteredUsers = await User.countDocuments();
-    const totalFeedbackItems = await Feedback.countDocuments();
-    const newFeedbackItems = await Feedback.countDocuments({ status: 'new' });
+    const { status } = req.body;
+    if (!FEEDBACK_STATUSES.includes(status)) return next(new AppError('Valid status is required.', 400));
 
-    // More stats can be added:
-    // - Page hits per page
-    // - Active users in last X days
-    // - User growth over time
+    const feedback = await Feedback.findByIdAndUpdate(req.params.id, { status }, { new: true, runValidators: true })
+      .populate('user', 'name email')
+      .populate('repliedBy', 'name email');
 
-    res.status(200).json({
-      status: 'success',
-      data: {
-        totalPageHits,
-        totalUniqueIPs: uniqueIPs.length,
-        totalRegisteredUsers,
-        totalFeedbackItems,
-        newFeedbackItems,
-      },
-    });
+    if (!feedback) return next(new AppError('Feedback not found.', 404));
+    res.status(200).json({ status: 'success', data: { feedback } });
   } catch (error) {
-    console.error('ADMIN GET SITE STATS ERROR:', error);
-    res.status(500).json({ status: 'error', message: 'Could not retrieve site statistics for admin.' });
+    next(error);
   }
 };
 
-// --- User Management (Placeholder) ---
+// --- Site Statistics ---
+exports.getAdminSiteStats = async (req, res, next) => {
+  try {
+    // Independent queries run in parallel (much faster than awaiting one by one)
+    const [totalPageHits, uniqueIPs, totalRegisteredUsers, totalFeedbackItems, newFeedbackItems, newMessages] = await Promise.all([
+      VisitorLog.estimatedDocumentCount(),
+      VisitorLog.distinct('ipAddress'),
+      User.estimatedDocumentCount(),
+      Feedback.estimatedDocumentCount(),
+      Feedback.countDocuments({ status: 'new' }),
+      ContactMessage.countDocuments({ status: 'new' }),
+    ]);
+
+    res.status(200).json({
+      status: 'success',
+      data: { totalPageHits, totalUniqueIPs: uniqueIPs.length, totalRegisteredUsers, totalFeedbackItems, newFeedbackItems, newMessages },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// --- User Management ---
 exports.getAllUsers = async (req, res, next) => {
-    try {
-        const users = await User.find().select('-password').sort('name'); // Exclude passwords
-        res.status(200).json({
-            status: 'success',
-            results: users.length,
-            data: { users }
-        });
-    } catch (error) {
-        console.error('ADMIN GET ALL USERS ERROR:', error);
-        res.status(500).json({ status: 'error', message: 'Could not retrieve users.' });
-    }
+  try {
+    const users = await User.find().select('-password').sort('name').limit(1000).lean();
+    res.status(200).json({ status: 'success', results: users.length, data: { users } });
+  } catch (error) {
+    next(error);
+  }
 };
 
 exports.updateUserRole = async (req, res, next) => {
-    try {
-        const userId = req.params.id;
-        const { role } = req.body;
-        if (!role || !['user', 'admin'].includes(role)) {
-            return res.status(400).json({ status: 'fail', message: 'Valid role (user, admin) is required.' });
-        }
-        const user = await User.findByIdAndUpdate(userId, { role }, {
-            new: true,
-            runValidators: true
-        }).select('-password');
+  try {
+    const { role } = req.body;
+    if (!['user', 'admin'].includes(role)) return next(new AppError('Valid role (user, admin) is required.', 400));
 
-        if (!user) {
-            return res.status(404).json({ status: 'fail', message: 'User not found.' });
-        }
-        res.status(200).json({ status: 'success', data: { user } });
-    } catch (error) {
-        console.error('ADMIN UPDATE USER ROLE ERROR:', error);
-        res.status(500).json({ status: 'error', message: 'Could not update user role.' });
+    // Safety: an admin cannot remove their own admin rights (prevents locking everyone out)
+    if (req.params.id === req.user.id && role !== 'admin') {
+      return next(new AppError('You cannot remove your own admin role.', 400));
     }
+
+    const user = await User.findByIdAndUpdate(req.params.id, { role }, { new: true, runValidators: true }).select('-password');
+    if (!user) return next(new AppError('User not found.', 404));
+    res.status(200).json({ status: 'success', data: { user } });
+  } catch (error) {
+    next(error);
+  }
 };
 
-
-// --- Contact/Team Requests (Placeholders - requires models and more logic) ---
+// --- Placeholders ---
+const notImplemented = (name) => (req, res) =>
+  res.status(501).json({ status: 'fail', message: `${name} endpoint not yet implemented.` });
 exports.getContactRequests = async (req, res, next) => {
-  // TODO: Implement after creating ContactRequest model
-  res.status(501).json({ status: 'fail', message: 'Contact requests endpoint not yet implemented.' });
+  try {
+    const messages = await ContactMessage.find().sort('-createdAt').limit(500).lean();
+    res.status(200).json({ status: 'success', results: messages.length, data: { messages } });
+  } catch (error) {
+    next(error);
+  }
 };
 
-exports.getTeamApplications = async (req, res, next) => {
-  // TODO: Implement after creating TeamApplication model
-  res.status(501).json({ status: 'fail', message: 'Team applications endpoint not yet implemented.' });
+exports.updateContactStatus = async (req, res, next) => {
+  try {
+    const { status } = req.body;
+    if (!['new', 'read', 'archived'].includes(status)) return next(new AppError('Valid status is required.', 400));
+    const message = await ContactMessage.findByIdAndUpdate(req.params.id, { status }, { new: true, runValidators: true });
+    if (!message) return next(new AppError('Message not found.', 404));
+    res.status(200).json({ status: 'success', data: { message } });
+  } catch (error) {
+    next(error);
+  }
 };
-
-// --- Recent Activity (Placeholder - requires logging strategy) ---
-exports.getRecentActivity = async (req, res, next) => {
-  // TODO: Implement a logging mechanism for important site activities
-  res.status(501).json({ status: 'fail', message: 'Recent activity endpoint not yet implemented.' });
-};
+exports.getTeamApplications = notImplemented('Team applications');
+exports.getRecentActivity = notImplemented('Recent activity');

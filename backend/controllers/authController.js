@@ -2,72 +2,69 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const VisitorLog = require('../models/VisitorLog');
+const Feedback = require('../models/Feedback');
+const SimulationHistory = require('../models/SimulationHistory');
+const AppError = require('../utils/AppError');
+const config = require('../config/env');
 
-// Utility to sign JWT
-const signToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN,
-  });
+const signToken = (id) =>
+  jwt.sign({ id }, config.jwtSecret, { expiresIn: config.jwtExpiresIn });
+
+// Cookie settings are shared by login and logout so the browser actually replaces/clears the same cookie.
+const baseCookieOptions = () => {
+  const crossSite = config.isProduction && config.crossSiteCookies;
+  return {
+    httpOnly: true, // JavaScript cannot read it (protects against XSS token theft)
+    secure: config.isProduction, // HTTPS only in production
+    sameSite: crossSite ? 'none' : 'lax', // 'none' requires secure:true
+    path: '/',
+  };
 };
 
-// Utility to create and send token
-const createSendToken = (user, statusCode, req, res) => {
+const createSendToken = (user, statusCode, res) => {
   const token = signToken(user._id);
 
-  const cookieOptions = {
-    expires: new Date(
-      Date.now() + process.env.JWT_COOKIE_EXPIRES_IN * 24 * 60 * 60 * 1000 // days * h * m * s * ms
-    ),
-    httpOnly: true, // Cookie cannot be accessed or modified by the browser
-    secure: req.secure || req.headers['x-forwarded-proto'] === 'https', // Only send over HTTPS in production
-    path: '/', // Explicitly set path
-    sameSite: 'Lax', // Recommended for most cases; use 'None' with Secure if cross-site context is needed
-  };
+  res.cookie('jwt', token, {
+    ...baseCookieOptions(),
+    maxAge: config.jwtCookieExpiresInDays * 24 * 60 * 60 * 1000,
+  });
 
-  // For production, if NODE_ENV is 'production', you might force secure: true
-  if (process.env.NODE_ENV === 'production') {
-    cookieOptions.secure = true;
-    // If you need cross-site cookies in prod with secure: true, also set sameSite: 'None'
-    // cookieOptions.sameSite = 'None';
-  }
-
-
-  res.cookie('jwt', token, cookieOptions);
-
-  // Remove password from output
-  user.password = undefined;
-
+  // The token is sent ONLY in the httpOnly cookie, never in the JSON body.
   res.status(statusCode).json({
     status: 'success',
-    token, // You might not need to send the token in the body if using HttpOnly cookies
-    data: {
-      user,
-    },
+    data: { user: publicUser(user) },
   });
 };
+
+const publicUser = (user) => ({
+  _id: user._id,
+  id: user.id,
+  name: user.name,
+  email: user.email,
+  organization: user.organization || '',
+  role: user.role,
+  createdAt: user.createdAt,
+  lastLogin: user.lastLogin,
+});
+
+const isString = (v) => typeof v === 'string';
 
 exports.signup = async (req, res, next) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password } = req.body; // NOTE: role is intentionally NOT read from the client
 
-    if (!name || !email || !password) {
-      return res.status(400).json({ status: 'fail', message: 'Name, email, and password are required.' });
+    if (![name, email, password].every(isString) || !name.trim() || !email.trim() || !password) {
+      return next(new AppError('Name, email, and password are required.', 400));
+    }
+    if (password.length < 8 || password.length > 72) {
+      return next(new AppError('Password must be between 8 and 72 characters.', 400));
     }
 
-    const newUser = await User.create({
-      name,
-      email,
-      password,
-      role: role || 'user',
-    });
-
-    createSendToken(newUser, 201, req, res);
+    // role always defaults to "user". Admins are promoted by an existing admin (or the seed script).
+    const newUser = await User.create({ name: name.trim(), email: email.trim(), password });
+    createSendToken(newUser, 201, res);
   } catch (error) {
-    console.error('SIGNUP ERROR:', error);
-    if (error.code === 11000) { // Duplicate key error (email)
-        return res.status(400).json({ status: 'fail', message: 'Email already exists.' });
-    }
-    res.status(500).json({ status: 'error', message: 'Could not sign up user. ' + error.message });
+    next(error); // duplicate email and validation errors are translated by the global error handler
   }
 };
 
@@ -75,67 +72,137 @@ exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    // 1) Check if email and password exist
-    if (!email || !password) {
-      return res.status(400).json({ status: 'fail', message: 'Please provide email and password!' });
+    if (!isString(email) || !isString(password) || !email || !password) {
+      return next(new AppError('Please provide email and password!', 400));
     }
 
-    // 2) Check if user exists && password is correct
-    const user = await User.findOne({ email }).select('+password'); // Explicitly select password
+    const user = await User.findOne({ email: email.trim().toLowerCase() }).select('+password');
 
+    // Same message for "no such user" and "wrong password" (prevents user enumeration)
     if (!user || !(await user.correctPassword(password, user.password))) {
-      return res.status(401).json({ status: 'fail', message: 'Incorrect email or password' });
+      return next(new AppError('Incorrect email or password', 401));
     }
 
-    // 3) If everything ok, send token to client
-    user.lastLogin = Date.now();
-    user.pageHits = (user.pageHits || 0) + 1; // Increment page hits for the user on login
-    await user.save({ validateBeforeSave: false }); // Save lastLogin and pageHits
+    // Atomic update: no race condition, and it does not touch the password hash
+    await User.updateOne({ _id: user._id }, { $set: { lastLogin: new Date() }, $inc: { pageHits: 1 } });
 
-    try {
-        await VisitorLog.create({
-            user: user._id,
-            ipAddress: req.ip,
-            userAgent: req.headers['user-agent'],
-            pagePath: '/login' // Or a generic 'site-access'
-        });
-    } catch (logError) {
-        console.error("Error logging visitor on login:", logError);
-    }
+    VisitorLog.create({
+      user: user._id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      pagePath: '/login',
+    }).catch((logError) => console.error('Error logging visitor on login:', logError.message));
 
-    createSendToken(user, 200, req, res);
+    createSendToken(user, 200, res);
   } catch (error) {
-    console.error('LOGIN ERROR:', error);
-    res.status(500).json({ status: 'error', message: 'Login failed. ' + error.message });
+    next(error);
   }
 };
 
 exports.logout = (req, res) => {
-  res.cookie('jwt', 'loggedout', {
-    expires: new Date(Date.now() + 10 * 1000), // Expires in 10 seconds
-    httpOnly: true,
-    path: '/',
-    sameSite: 'Lax',
-    // secure: process.env.NODE_ENV === 'production' // Add if needed for consistency
-  });
+  res.clearCookie('jwt', baseCookieOptions());
   res.status(200).json({ status: 'success' });
 };
 
-// New function to get the currently logged-in user
-exports.getMe = (req, res, next) => {
-  // req.user is set by the 'protect' middleware
-  if (!req.user) {
-    // This case should ideally be caught by the protect middleware itself
-    // which would send a 401 before reaching here.
-    return res.status(401).json({
-        status: 'fail',
-        message: 'User not found or not logged in.'
-    });
+exports.getMe = (req, res) => {
+  res.status(200).json({ status: 'success', data: { user: publicUser(req.user) } });
+};
+
+// --- Profile ---------------------------------------------------------------
+
+// PATCH /users/me  - only name and organization can be changed here (never role/email/password)
+exports.updateMe = async (req, res, next) => {
+  try {
+    const { name, organization } = req.body;
+    const update = {};
+
+    if (name !== undefined) {
+      if (!isString(name) || !name.trim() || name.trim().length > 80) {
+        return next(new AppError('Name must be between 1 and 80 characters.', 400));
+      }
+      update.name = name.trim();
+    }
+    if (organization !== undefined) {
+      if (!isString(organization) || organization.trim().length > 120) {
+        return next(new AppError('Organization must be at most 120 characters.', 400));
+      }
+      update.organization = organization.trim();
+    }
+    if (!Object.keys(update).length) return next(new AppError('Nothing to update.', 400));
+
+    const user = await User.findByIdAndUpdate(req.user.id, update, { new: true, runValidators: true });
+    res.status(200).json({ status: 'success', data: { user: publicUser(user) } });
+  } catch (error) {
+    next(error);
   }
-  res.status(200).json({
-    status: 'success',
-    data: {
-      user: req.user,
-    },
-  });
+};
+
+// PATCH /users/updateMyPassword
+exports.updateMyPassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!isString(currentPassword) || !isString(newPassword)) {
+      return next(new AppError('Current and new password are required.', 400));
+    }
+    if (newPassword.length < 8 || newPassword.length > 72) {
+      return next(new AppError('New password must be between 8 and 72 characters.', 400));
+    }
+    if (newPassword === currentPassword) {
+      return next(new AppError('New password must be different from the current one.', 400));
+    }
+
+    const user = await User.findById(req.user.id).select('+password');
+    if (!(await user.correctPassword(currentPassword, user.password))) {
+      return next(new AppError('Your current password is incorrect.', 401));
+    }
+
+    user.password = newPassword; // pre('save') hook hashes it
+    await user.save();
+    createSendToken(user, 200, res); // issue a fresh session cookie
+  } catch (error) {
+    next(error);
+  }
+};
+
+// GET /users/me/summary  - numbers for the profile dashboard
+exports.getMySummary = async (req, res, next) => {
+  try {
+    const [runs, feedbackCount, latest] = await Promise.all([
+      SimulationHistory.countDocuments({ user: req.user.id }),
+      Feedback.countDocuments({ user: req.user.id }),
+      SimulationHistory.findOne({ user: req.user.id }).sort({ runAt: -1 }).select('modelName runAt executionTimeRequested').lean(),
+    ]);
+    res.status(200).json({
+      status: 'success',
+      data: { savedRuns: runs, feedbackCount, lastRun: latest || null, memberSince: req.user.createdAt, lastLogin: req.user.lastLogin || null },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// DELETE /users/me  - permanently delete the account and its data (requires password)
+exports.deleteMe = async (req, res, next) => {
+  try {
+    const { password } = req.body;
+    if (!isString(password) || !password) return next(new AppError('Please confirm your password to delete your account.', 400));
+
+    const user = await User.findById(req.user.id).select('+password');
+    if (!(await user.correctPassword(password, user.password))) return next(new AppError('Incorrect password.', 401));
+
+    if (user.role === 'admin') {
+      const admins = await User.countDocuments({ role: 'admin' });
+      if (admins <= 1) return next(new AppError('You are the only administrator. Promote another admin first.', 400));
+    }
+
+    await Promise.all([
+      SimulationHistory.deleteMany({ user: user._id }),
+      Feedback.deleteMany({ user: user._id }),
+      User.deleteOne({ _id: user._id }),
+    ]);
+    res.clearCookie('jwt', baseCookieOptions());
+    res.status(200).json({ status: 'success', message: 'Your account has been deleted.' });
+  } catch (error) {
+    next(error);
+  }
 };

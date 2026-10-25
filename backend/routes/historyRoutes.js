@@ -2,13 +2,12 @@
 const express = require('express');
 const historyController = require('../controllers/historyController');
 const authMiddleware = require('../middleware/authMiddleware');
+const { validateModelName, validateObjectId } = require('../middleware/validate');
 
 const router = express.Router();
 
-// All history routes require user to be logged in
 router.use(authMiddleware.protect);
-
-// GET /api/history/:modelName - Fetches history for a specific model for the logged-in user
-router.get('/:modelName', historyController.getSimulationHistoryForModel);
+router.delete('/item/:id', validateObjectId(), historyController.deleteHistoryItem);
+router.get('/:modelName', validateModelName, historyController.getSimulationHistoryForModel);
 
 module.exports = router;

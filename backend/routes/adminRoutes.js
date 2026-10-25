@@ -2,33 +2,25 @@
 const express = require('express');
 const adminController = require('../controllers/adminController');
 const authMiddleware = require('../middleware/authMiddleware');
+const { validateObjectId } = require('../middleware/validate');
 
 const router = express.Router();
 
-// Protect all admin routes: user must be logged in AND be an admin
-router.use(authMiddleware.protect);
-router.use(authMiddleware.authorizeAdmin);
+// Every admin route: logged in AND admin
+router.use(authMiddleware.protect, authMiddleware.restrictTo('admin'));
 
-// Feedback Management
 router.get('/feedback', adminController.getAllFeedback);
-router.put('/feedback/:id/reply', adminController.replyToFeedback); // For adding a reply
-router.patch('/feedback/:id/status', adminController.updateFeedbackStatus); // For changing status (seen, archived)
+router.put('/feedback/:id/reply', validateObjectId(), adminController.replyToFeedback);
+router.patch('/feedback/:id/status', validateObjectId(), adminController.updateFeedbackStatus);
 
-
-// Site Statistics
 router.get('/stats', adminController.getAdminSiteStats);
 
-// User Management
 router.get('/users', adminController.getAllUsers);
-router.patch('/users/:id/role', adminController.updateUserRole);
+router.patch('/users/:id/role', validateObjectId(), adminController.updateUserRole);
 
-
-// Contact & Team Requests (Placeholders)
 router.get('/contact-requests', adminController.getContactRequests);
+router.patch('/contact-requests/:id/status', validateObjectId(), adminController.updateContactStatus);
 router.get('/team-applications', adminController.getTeamApplications);
-
-// Recent Activity (Placeholder)
 router.get('/recent-activity', adminController.getRecentActivity);
-
 
 module.exports = router;

@@ -1,31 +1,31 @@
 // backend/controllers/historyController.js
 const SimulationHistory = require('../models/SimulationHistory');
+const AppError = require('../utils/AppError');
 
 exports.getSimulationHistoryForModel = async (req, res, next) => {
   try {
-    const userId = req.user.id; // From authMiddleware.protect
-    const { modelName } = req.params;
-
-    if (!modelName) {
-      return res.status(400).json({ status: 'fail', message: 'Model name parameter is required.' });
-    }
-
+    // user id comes from the verified token (never from the request)
     const history = await SimulationHistory.find({
-      user: userId,
-      modelName: modelName,
+      user: req.user.id,
+      modelName: req.params.modelName,
     })
-    .sort({ runAt: -1 }) // Newest first
-    .limit(3); // Already limited to 3 by the save logic, but good to be explicit here too.
+      .sort({ runAt: -1 })
+      .limit(3)
+      .lean();
 
-    res.status(200).json({
-      status: 'success',
-      results: history.length,
-      data: {
-        history,
-      },
-    });
+    res.status(200).json({ status: 'success', results: history.length, data: { history } });
   } catch (error) {
-    console.error('GET SIMULATION HISTORY ERROR:', error);
-    res.status(500).json({ status: 'error', message: 'Could not retrieve simulation history.' });
+    next(error);
+  }
+};
+
+// DELETE /history/item/:id  - a user can delete only their own saved runs
+exports.deleteHistoryItem = async (req, res, next) => {
+  try {
+    const deleted = await SimulationHistory.findOneAndDelete({ _id: req.params.id, user: req.user.id });
+    if (!deleted) return next(new AppError('Saved run not found.', 404));
+    res.status(200).json({ status: 'success', message: 'Saved run deleted.' });
+  } catch (error) {
+    next(error);
   }
 };

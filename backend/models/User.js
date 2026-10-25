@@ -1,65 +1,50 @@
 // backend/models/User.js
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const validator = require('validator');
 
 const userSchema = new mongoose.Schema({
   name: {
     type: String,
     required: [true, 'Please provide your name'],
+    trim: true,
+    maxlength: [80, 'Name must be at most 80 characters'],
   },
   email: {
     type: String,
     required: [true, 'Please provide your email'],
     unique: true,
     lowercase: true,
-    match: [
-      /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
-      'Please provide a valid email address',
-    ],
+    trim: true,
+    validate: [validator.isEmail, 'Please provide a valid email address'],
   },
   password: {
     type: String,
     required: [true, 'Please provide a password'],
-    minlength: 8,
-    select: false, // Do not send password back in queries by default
+    minlength: [8, 'Password must be at least 8 characters'],
+    maxlength: [72, 'Password must be at most 72 characters'], // bcrypt only uses the first 72 bytes
+    select: false, // never returned by queries unless explicitly requested
   },
+  organization: { type: String, trim: true, maxlength: [120, 'Organization must be at most 120 characters'], default: '' },
   role: {
     type: String,
     enum: ['user', 'admin'],
     default: 'user',
   },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-  // You might add fields for lastLogin, pageHits, etc. here later
-  pageHits: {
-    type: Number,
-    default: 0
-  },
-  lastLogin: {
-    type: Date
-  }
+  createdAt: { type: Date, default: Date.now },
+  pageHits: { type: Number, default: 0 },
+  lastLogin: { type: Date },
 });
 
-// Password hashing middleware
+// Hash the password only when it is new or changed
 userSchema.pre('save', async function (next) {
-  // Only run this function if password was actually modified
   if (!this.isModified('password')) return next();
-
-  // Hash the password with cost of 12
   this.password = await bcrypt.hash(this.password, 12);
   next();
 });
 
-// Instance method to check password (for login)
-userSchema.methods.correctPassword = async function (
-  candidatePassword,
-  userPassword
-) {
-  return await bcrypt.compare(candidatePassword, userPassword);
+userSchema.methods.correctPassword = async function (candidatePassword, userPassword) {
+  return bcrypt.compare(candidatePassword, userPassword);
 };
 
-const User = mongoose.model('User', userSchema);
-
-module.exports = User;
+module.exports = mongoose.model('User', userSchema);
