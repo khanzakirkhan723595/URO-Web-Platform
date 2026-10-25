@@ -2,126 +2,117 @@
 import HeroSection from '../components/HeroSection';
 import ModelCard from '../components/ModelCard';
 import { Link } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Cpu, Globe2, Layers } from 'lucide-react';
 
-const Home = () => {
-  return (
-    <div>
-      <HeroSection />
-      
-      {/* Introduction Section */}
-      <section className="section-padding bg-white">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+const features = [
+  { icon: Cpu, title: 'High-performance computing', text: 'Computation runs on dedicated model servers, so you only need a browser and your input files.' },
+  { icon: Layers, title: 'Inland to coastal', text: 'Rainfall-runoff, river and storm surge processes, from single models to tightly coupled systems.' },
+  { icon: Globe2, title: 'Built for collaboration', text: 'Developed with agencies, engineering firms and research institutions to improve flood resilience.' },
+];
+
+const highlights = [
+  'Novel coupling methods for inland-coastal flood models',
+  'High-performance computing for real-time flood forecasting',
+  'Climate change projections in flood risk assessments',
+  'Urban drainage network modelling with uncertainty quantification',
+];
+
+const Home = () => (
+  <div>
+    <HeroSection />
+
+    {/* Feature strip */}
+    <section className="relative z-10 -mt-10 px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto grid max-w-7xl gap-4 md:grid-cols-3">
+        {features.map(({ icon: Icon, title, text }) => (
+          <div key={title} className="panel flex gap-4">
+            <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><Icon size={22} /></span>
             <div>
-              <h2 className="heading-primary">Welcome to URO Flood Lab</h2>
-              <p className="mb-4">
-                URO Flood Lab (Urban River Ocean Flood Dynamics Laboratory) is dedicated to the development of advanced flood modeling systems for urban environments. Our research focuses on understanding and predicting flood events through sophisticated computational models.
-              </p>
-              <p className="mb-4">
-                Floods have been one of the most dangerous and costliest natural phenomena throughout human history. They occur when water overflows from its usual boundaries, such as from a river, lake, or ocean, due to intense rainfall, extreme storm surges, or the combined effect of rainfall and storm surges.
-              </p>
-              <Link
-                to="/about"
-                className="inline-flex items-center text-blue-800 font-semibold hover:text-blue-600 transition-colors"
-              >
-                Learn more about our lab
-                <ArrowRight className="ml-2" size={16} />
-              </Link>
-            </div>
-            <div className="rounded-lg overflow-hidden shadow-xl">
-              <img
-                src="/Home/UROlab.png"
-                alt="URO Flood Lab Team"
-                className="w-full h-auto"
-              />
+              <h3 className="text-base font-bold text-slate-900">{title}</h3>
+              <p className="mt-1 text-sm leading-relaxed text-slate-600">{text}</p>
             </div>
           </div>
-        </div>
-      </section>
+        ))}
+      </div>
+    </section>
 
-      <section id="models" className="section-padding bg-gray-50">
-        <div className="max-w-7xl mx-auto">
-          <h2 className="heading-primary text-center">Our Flood Models</h2>
-          <p className="text-gray-600 text-center max-w-3xl mx-auto mb-12">
-            We offer advanced flood modeling and simulation tools for researchers, engineers, and urban planners to predict and manage flood events.
+    {/* Introduction */}
+    <section className="section-padding">
+      <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-2 lg:gap-16">
+        <div>
+          <p className="eyebrow mb-3">Who we are</p>
+          <h2 className="heading-primary">Welcome to URO Flood Lab</h2>
+          <p className="lead mb-4">
+            URO Flood Lab (Urban River Ocean Flood Dynamics Laboratory) develops advanced flood modelling systems for urban environments, focused on understanding and predicting flood events through sophisticated computational models.
           </p>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <ModelCard 
-              title="Flood Model"
-              description="High-resolution 2D flood modeling system for urban and rural watersheds."
-              imageSrc="Home/IFS.png"
-              altText="Flood model visualization"
-              linkTo="/models/flood-model"
-            />
-            <ModelCard 
-              title="Storm Surge Model"
-              description="Powerful coastal inundation simulator for hurricane and storm events."
-              imageSrc="Home/SSM.png"
-              altText="Storm surge model visualization"
-              linkTo="/models/storm-surge"
-            />
-            <ModelCard 
-              title="Tightly Coupled Model"
-              description="Combined inland-coastal solution for comprehensive flood analysis."
-              imageSrc="Home/TCM.png"
-              altText="Coupled model visualization"
-              linkTo="/models/coupled-model"
-            />
-          </div>
+          <p className="mb-6 leading-relaxed text-slate-600">
+            Floods are among the most dangerous and costly natural hazards. They occur when water overflows its usual boundaries (a river, lake or ocean) due to intense rainfall, extreme storm surges, or the combined effect of both.
+          </p>
+          <Link to="/about" className="inline-flex items-center gap-2 font-semibold text-brand-700 transition hover:gap-3 hover:text-brand-600">
+            Learn more about our lab <ArrowRight size={16} />
+          </Link>
         </div>
-      </section>
-      
-      <section className="section-padding">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-            <div>
-              <h2 className="heading-primary">About URO Flood Lab</h2>
-              <p className="mb-4">
-                The Urban River Ocean (URO) Flood Dynamics Lab develops cutting-edge computational tools to predict, analyze, and mitigate flood events in complex urban and natural environments.
-              </p>
-              <p className="mb-4">
-                Our interdisciplinary team combines expertise in hydraulic engineering, computational fluid dynamics, urban planning, and climate science to create accurate and accessible flood models.
-              </p>
-              <p>
-                We collaborate with government agencies, engineering firms, and research institutions to improve flood resilience and adaptation strategies worldwide.
-              </p>
-            </div>
-            <div className="bg-gray-100 p-6 rounded-lg">
-              <h3 className="text-xl font-bold text-blue-800 mb-4">Research Highlights</h3>
-              <ul className="space-y-3">
-                <li className="flex items-start">
-                  <svg className="h-5 w-5 text-blue-500 mt-1 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <span>Development of novel coupling methods for inland-coastal flood models</span>
-                </li>
-                <li className="flex items-start">
-                  <svg className="h-5 w-5 text-blue-500 mt-1 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <span>High-performance computing approaches for real-time flood forecasting</span>
-                </li>
-                <li className="flex items-start">
-                  <svg className="h-5 w-5 text-blue-500 mt-1 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <span>Integration of climate change projections in flood risk assessments</span>
-                </li>
-                <li className="flex items-start">
-                  <svg className="h-5 w-5 text-blue-500 mt-1 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <span>Urban drainage network modeling with uncertainty quantification</span>
-                </li>
-              </ul>
-            </div>
-          </div>
+        <div className="overflow-hidden rounded-3xl shadow-lift ring-1 ring-slate-200">
+          <img src="/Home/UROlab.webp" alt="Aerial view of a flooded urban area" loading="lazy" className="h-full w-full object-cover" />
         </div>
-      </section>
-    </div>
-  );
-};
+      </div>
+    </section>
+
+    {/* Models */}
+    <section id="models" className="section-padding scroll-mt-16 bg-white">
+      <div className="mx-auto max-w-7xl">
+        <div className="mx-auto mb-10 max-w-3xl text-center sm:mb-14">
+          <p className="eyebrow mb-3 justify-center">Models</p>
+          <h2 className="heading-primary">Our flood models</h2>
+          <p className="lead">Advanced modelling and simulation tools for researchers, engineers and urban planners to predict and manage flood events.</p>
+        </div>
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8">
+          <ModelCard title="Flood Model" description="High-resolution 2D flood modelling system for urban and rural watersheds." imageSrc="/Home/IFS.png" altText="Flood model visualisation" linkTo="/models/flood-model" status="live" />
+          <ModelCard title="Storm Surge Model" description="Powerful coastal inundation simulator for hurricane and storm events." imageSrc="/Home/SSM.png" altText="Storm surge model visualisation" linkTo="/models/storm-surge" status="soon" />
+          <ModelCard title="Tightly Coupled Model" description="Combined inland-coastal solution for comprehensive flood analysis." imageSrc="/Home/TCM.png" altText="Coupled model visualisation" linkTo="/models/coupled-model" status="soon" />
+        </div>
+      </div>
+    </section>
+
+    {/* Research */}
+    <section className="section-padding">
+      <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-2 lg:gap-16">
+        <div>
+          <p className="eyebrow mb-3">Research</p>
+          <h2 className="heading-primary">Cutting-edge tools to predict and mitigate floods</h2>
+          <p className="mb-4 leading-relaxed text-slate-600">
+            Our interdisciplinary team combines hydraulic engineering, computational fluid dynamics, urban planning and climate science to create accurate and accessible flood models.
+          </p>
+          <p className="leading-relaxed text-slate-600">
+            We collaborate with government agencies, engineering firms and research institutions to improve flood resilience and adaptation strategies worldwide.
+          </p>
+        </div>
+        <div className="panel">
+          <h3 className="mb-4 text-lg font-bold text-brand-900">Research highlights</h3>
+          <ul className="space-y-4">
+            {highlights.map((h) => (
+              <li key={h} className="flex items-start gap-3">
+                <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-brand-500" />
+                <span className="text-slate-700">{h}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    {/* CTA */}
+    <section className="px-4 pb-16 sm:px-6 lg:px-8">
+      <div className="page-hero mx-auto max-w-7xl rounded-3xl px-6 py-10 text-center sm:px-12 sm:py-14">
+        <h2 className="relative text-2xl font-extrabold tracking-tight text-white sm:text-3xl">Ready to run your first simulation?</h2>
+        <p className="relative mx-auto mt-3 max-w-xl text-slate-300">Create a free account, upload your hydrograph, and get results in minutes.</p>
+        <div className="relative mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+          <Link to="/signup" className="inline-flex items-center justify-center rounded-xl bg-white px-6 py-3 text-sm font-semibold text-brand-950 transition hover:bg-brand-50">Create an account</Link>
+          <Link to="/models/flood-model" className="inline-flex items-center justify-center rounded-xl border border-white/30 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10">Open the flood model</Link>
+        </div>
+      </div>
+    </section>
+  </div>
+);
 
 export default Home;

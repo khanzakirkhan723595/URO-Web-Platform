@@ -1,27 +1,16 @@
 // src/components/AdminRoute.jsx
-import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
+import PageLoader from './PageLoader';
 import { useAuth } from '../context/AuthContext';
 
-// Admin-specific protected route
+// Admin-only page wrapper (UX only; the API also checks the role).
 const AdminRoute = ({ children }) => {
   const { user, loadingAuth } = useAuth();
   const location = useLocation();
 
-  if (loadingAuth) {
-    return <div className="flex justify-center items-center h-screen"><p>Loading authentication status...</p></div>;
-  }
-
-  if (!user) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  if (user.role !== 'admin') {
-    // Redirect to home or a "not authorized" page if not an admin
-    // You could also show a message like "You are not authorized to view this page."
-    return <Navigate to="/" replace />; 
-  }
-
+  if (loadingAuth) return <PageLoader label="Checking your session..." />;
+  if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
+  if (user.role !== 'admin') return <Navigate to="/" replace />;
   return children;
 };
 

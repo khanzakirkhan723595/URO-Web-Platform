@@ -1,87 +1,41 @@
 // src/components/FeedbackListDisplay.jsx
-import React from 'react';
-import { MessageCircle, UserCircle, ShieldCheck, CornerDownRight } from 'lucide-react';
+import { MessageSquareText, ShieldCheck } from 'lucide-react';
+import { StarDisplay } from './StarRating';
 
-const FeedbackListItem = ({ feedback }) => {
-  const userRating = feedback.rating || 0;
-  return (
-    <div className="bg-slate-50 p-4 rounded-lg shadow border border-slate-200 transition-shadow hover:shadow-md">
-      <div className="flex items-start space-x-3">
-        <UserCircle size={36} className="text-slate-400 flex-shrink-0 mt-1" />
-        <div className="flex-1">
-          <div className="flex justify-between items-center">
-            <p className="text-sm font-semibold text-slate-700">
-              {feedback.user?.name || 'Anonymous User'}
-            </p>
-            <div className="flex items-center">
-              {Array.from({ length: 5 }, (_, i) => (
-                <span key={i} className={`text-lg ${i < userRating ? 'text-yellow-400' : 'text-slate-300'}`}>
-                  &#9733; {/* Star character */}
-                </span>
-              ))}
+const FeedbackListDisplay = ({ feedbackItems = [], isLoading, error }) => (
+  <section className="panel" aria-labelledby="feedback-list-title">
+    <h3 id="feedback-list-title" className="mb-4 flex items-center gap-2 text-lg font-bold text-slate-900">
+      <MessageSquareText size={20} className="text-brand-600" /> Community feedback
+      {!isLoading && !error && <span className="badge bg-slate-100 text-slate-600">{feedbackItems.length}</span>}
+    </h3>
+
+    {isLoading ? (
+      <div className="space-y-3" aria-busy="true">{[1, 2].map((i) => <div key={i} className="h-20 animate-pulse rounded-xl bg-slate-100" />)}</div>
+    ) : error ? (
+      <p className="alert-error" role="alert">{error}</p>
+    ) : feedbackItems.length === 0 ? (
+      <p className="rounded-xl bg-slate-50 p-6 text-center text-sm text-slate-500">No feedback yet. Be the first to share your thoughts!</p>
+    ) : (
+      <ul className="max-h-[28rem] space-y-4 overflow-y-auto pr-1">
+        {feedbackItems.map((item) => (
+          <li key={item._id} className="rounded-xl border border-slate-200 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-semibold text-slate-900">{item.user?.name || 'Anonymous'}</p>
+              <StarDisplay value={item.rating} />
             </div>
-          </div>
-          <p className="text-xs text-slate-500 mb-1.5">
-            {new Date(feedback.createdAt).toLocaleString()}
-          </p>
-          {feedback.comment ? (
-            <p className="text-sm text-slate-600 leading-relaxed">{feedback.comment}</p>
-          ) : (
-            <p className="text-sm text-slate-500 italic">No comment provided.</p>
-          )}
-        </div>
-      </div>
-
-      {feedback.adminReply && (
-        <div className="mt-3 pl-8 pr-2 py-2 bg-blue-50 border-l-4 border-blue-400 rounded-r-md relative">
-           <CornerDownRight size={18} className="absolute left-2 top-3 text-blue-500 transform -scale-x-100" />
-          <div className="flex items-center space-x-2 mb-1">
-            <ShieldCheck size={18} className="text-blue-600" />
-            <p className="text-xs font-semibold text-blue-700">
-              Reply from {feedback.repliedBy?.name || 'Admin'}
-            </p>
-          </div>
-          <p className="text-xs text-slate-500 mb-1">
-            {new Date(feedback.repliedAt).toLocaleString()}
-          </p>
-          <p className="text-sm text-blue-700 leading-relaxed">{feedback.adminReply}</p>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const FeedbackListDisplay = ({ feedbackItems, isLoading, error }) => {
-  if (isLoading) {
-    return <div className="text-center py-4 text-slate-500">Loading feedback...</div>;
-  }
-
-  if (error) {
-    return <div className="text-center py-4 text-red-600 bg-red-50 p-3 rounded-md">Error loading feedback: {error}</div>;
-  }
-
-  if (!feedbackItems || feedbackItems.length === 0) {
-    return (
-      <div className="text-center py-8 text-slate-500">
-        <MessageCircle size={40} className="mx-auto mb-2 text-slate-400" />
-        No feedback submitted for this model yet. Be the first!
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-8 bg-white p-6 rounded-xl shadow-lg">
-      <h3 className="text-xl font-semibold text-slate-800 mb-6">
-        Community Feedback ({feedbackItems.length})
-      </h3>
-      <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar"> 
-        {/* Added custom-scrollbar class if you want to style it via CSS */}
-        {feedbackItems.map((feedback) => (
-          <FeedbackListItem key={feedback._id} feedback={feedback} />
+            <p className="text-xs text-slate-400">{new Date(item.createdAt).toLocaleDateString()}</p>
+            {item.comment && <p className="mt-2 break-words text-sm text-slate-700">{item.comment}</p>}
+            {item.adminReply && (
+              <div className="mt-3 rounded-lg border-l-4 border-brand-500 bg-brand-50 p-3 text-sm">
+                <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-brand-800"><ShieldCheck size={14} /> Reply from URO Flood Lab</p>
+                <p className="break-words text-slate-700">{item.adminReply}</p>
+              </div>
+            )}
+          </li>
         ))}
-      </div>
-    </div>
-  );
-};
+      </ul>
+    )}
+  </section>
+);
 
 export default FeedbackListDisplay;

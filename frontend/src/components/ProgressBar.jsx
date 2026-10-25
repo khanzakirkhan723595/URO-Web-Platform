@@ -1,32 +1,36 @@
-// -----------------------------------------------------------------------------
-// File: frontend/src/components/ProgressBar.jsx
-// -----------------------------------------------------------------------------
-import React from 'react';
+// src/components/ProgressBar.jsx
+import { CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
-const ProgressBar = ({ progress, statusMessage }) => {
+const ProgressBar = ({ progress, statusMessage = '' }) => {
   if (progress === null || progress < 0) return null;
 
+  const failed = statusMessage.toLowerCase().includes('error');
+  const done = progress >= 100;
+  const pct = Math.max(0, Math.min(100, Math.round(progress)));
+
   return (
-    // Removed max-w-lg to allow full width. Margin (my-4) also removed, can be handled by parent.
-    <div className="w-full p-4 bg-white shadow-md rounded-lg"> 
-      <div className="text-sm font-medium text-gray-700 mb-1">{statusMessage || `Processing: ${progress}%`}</div>
-      <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
-        <div
-          className="bg-indigo-600 h-4 rounded-full transition-all duration-300 ease-in-out"
-          style={{ width: `${progress}%` }}
-          role="progressbar"
-          aria-valuenow={progress}
-          aria-valuemin="0"
-          aria-valuemax="100"
-          aria-label={statusMessage || `Processing: ${progress}%`}
-        ></div>
+    <div className="panel" role="status" aria-live="polite">
+      <div className="mb-3 flex items-start gap-3">
+        {failed ? <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />
+          : done ? <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-500" />
+          : <Loader2 className="mt-0.5 h-5 w-5 flex-shrink-0 animate-spin text-brand-600" />}
+        <div className="min-w-0 flex-1">
+          <p className="break-words text-sm font-semibold text-slate-800">{statusMessage || `Processing: ${pct}%`}</p>
+          <p className="text-xs text-slate-500">{failed ? 'The run ended with an error.' : done ? 'Processing complete.' : 'Please keep this tab open.'}</p>
+        </div>
+        <span className="text-sm font-bold tabular-nums text-slate-700">{pct}%</span>
       </div>
-      {progress === 100 && !statusMessage.toLowerCase().includes("error") && (
-        <p className="text-green-600 text-sm mt-2 text-center">Processing complete!</p>
-      )}
-       {progress === 100 && statusMessage.toLowerCase().includes("error") && (
-        <p className="text-red-600 text-sm mt-2 text-center">Process finished with an error.</p>
-      )}
+      <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ease-out ${failed ? 'bg-red-500' : done ? 'bg-emerald-500' : 'bg-gradient-to-r from-brand-500 to-brand-300'}`}
+          style={{ width: `${pct}%` }}
+          role="progressbar"
+          aria-valuenow={pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={statusMessage || `Processing: ${pct}%`}
+        />
+      </div>
     </div>
   );
 };

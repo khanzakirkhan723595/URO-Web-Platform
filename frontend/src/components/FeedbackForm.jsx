@@ -1,187 +1,94 @@
 // src/components/FeedbackForm.jsx
-import React, { useState, useEffect, useCallback } from 'react';
-import { Star, Send, AlertTriangle, Edit } from 'lucide-react'; // Added Edit icon
+import { useState, useEffect, useCallback } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { submitOrUpdateFeedback, getCurrentUserFeedbackForModel } from '../services/api'; // Updated API function
-import { Link } from 'react-router-dom';
+import { getCurrentUserFeedbackForModel, submitOrUpdateFeedback } from '../services/api';
+import StarRating from './StarRating';
+import { Loader2, MessageSquarePlus } from 'lucide-react';
 
-const FeedbackForm = ({ isLoading, modelName = "General", onFeedbackSubmitted }) => {
+const FeedbackForm = ({ isLoading = false, modelName = 'General', onFeedbackSubmitted }) => {
   const { user } = useAuth();
+  const location = useLocation();
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
-  const [existingFeedbackId, setExistingFeedbackId] = useState(null); // To know if we are updating
-  const [formMessage, setFormMessage] = useState({ type: '', text: '' }); // For success/error messages
+  const [hasExisting, setHasExisting] = useState(false);
+  const [message, setMessage] = useState(null); // { type: 'success' | 'error', text }
   const [submitting, setSubmitting] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true); // For loading existing feedback
 
-  const loadUserFeedback = useCallback(async () => {
-    if (user && modelName) {
-      setInitialLoading(true);
-      setFormMessage({ type: '', text: '' });
-      try {
-        const response = await getCurrentUserFeedbackForModel(modelName);
-        if (response.status === 'success' && response.data.feedback) {
-          const userFeedback = response.data.feedback;
-          setRating(userFeedback.rating);
-          setComment(userFeedback.comment || '');
-          setExistingFeedbackId(userFeedback._id); // Mark that we found existing feedback
-        } else {
-          // No existing feedback, reset form for new submission
-          setRating(0);
-          setComment('');
-          setExistingFeedbackId(null);
-        }
-      } catch (error) {
-        console.warn("Could not load user's existing feedback:", error.message);
-        // Don't show error here, allow user to submit new feedback
-        setRating(0);
-        setComment('');
-        setExistingFeedbackId(null);
-      } finally {
-        setInitialLoading(false);
-      }
-    } else {
-        setInitialLoading(false); // Not logged in or no model name
-        setRating(0);
-        setComment('');
-        setExistingFeedbackId(null);
+  // Load the user's previous feedback (if any) so the form switches to "update" mode
+  const loadOwnFeedback = useCallback(async () => {
+    if (!user) { setRating(0); setComment(''); setHasExisting(false); return; }
+    try {
+      const res = await getCurrentUserFeedbackForModel(modelName);
+      const fb = res.data?.feedback;
+      setHasExisting(Boolean(fb));
+      setRating(fb?.rating || 0);
+      setComment(fb?.comment || '');
+    } catch {
+      /* silently ignore: the form still works for a new submission */
     }
   }, [user, modelName]);
 
+  useEffect(() => { loadOwnFeedback(); }, [loadOwnFeedback]);
+
+  // Hide the status message after 5 seconds (and clean up the timer)
   useEffect(() => {
-    loadUserFeedback();
-  }, [loadUserFeedback]); // Runs when user or modelName changes
+    if (!message) return undefined;
+    const t = setTimeout(() => setMessage(null), 5000);
+    return () => clearTimeout(t);
+  }, [message]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!user) {
-      setFormMessage({ type: 'error', text: "Please log in to submit feedback." });
-      return;
-    }
-    if (rating === 0 && !existingFeedbackId) { // Rating is required for new feedback
-      setFormMessage({ type: 'error', text: "Please select a rating." });
-      return;
-    }
-     if (rating === 0 && existingFeedbackId) { // If updating, rating must still be > 0
-      setFormMessage({ type: 'error', text: "Rating cannot be zero when updating." });
-      return;
-    }
-
-
-    setFormMessage({ type: '', text: '' });
+    if (!rating) return setMessage({ type: 'error', text: 'Please choose a star rating.' });
     setSubmitting(true);
+    setMessage(null);
     try {
-      // Backend now handles create or update based on user and modelName
-      const response = await submitOrUpdateFeedback({ 
-        modelName, 
-        rating, 
-        comment,
-        // No need to send existingFeedbackId, backend logic handles it
-      });
-
-      if (response.status === 'success') {
-        setFormMessage({ type: 'success', text: response.message || (existingFeedbackId ? 'Feedback updated successfully!' : 'Feedback submitted successfully!') });
-        setExistingFeedbackId(response.data.feedback._id); // Update ID in case it was new
-        if (onFeedbackSubmitted) {
-          onFeedbackSubmitted(); // Refresh the public list
-        }
-        setTimeout(() => {
-            setFormMessage({ type: '', text: '' });
-        }, 5000);
-      } else {
-         setFormMessage({ type: 'error', text: response.message || "An unknown error occurred." });
-      }
+      const res = await submitOrUpdateFeedback({ modelName, rating, comment: comment.trim() });
+      setHasExisting(true);
+      setMessage({ type: 'success', text: res.message || 'Thank you for your feedback!' });
+      onFeedbackSubmitted?.();
     } catch (err) {
-      setFormMessage({ type: 'error', text: err.message || "Failed to submit feedback. Please try again." });
-      console.error("Feedback submission error:", err);
+      setMessage({ type: 'error', text: err.message || 'Could not submit feedback.' });
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (initialLoading && user) {
-    return (
-        <div className="w-full p-6 sm:p-8 bg-white shadow-xl rounded-lg text-center text-slate-500">
-            Loading your feedback...
-        </div>
-    );
-  }
+  const guest = !user;
 
   return (
-    <div className="w-full p-6 sm:p-8 bg-white shadow-xl rounded-lg"> 
-      <h3 className="text-2xl font-semibold text-slate-800 mb-2 text-center">
-        {existingFeedbackId ? 'Update Your Feedback' : 'Share Your Feedback'}
+    <section className="panel" aria-labelledby="feedback-title">
+      <h3 id="feedback-title" className="mb-1 flex items-center gap-2 text-lg font-bold text-slate-900">
+        <MessageSquarePlus size={20} className="text-brand-600" /> {hasExisting ? 'Update your feedback' : 'Share your feedback'}
       </h3>
-       <p className="text-sm text-slate-500 text-center mb-6">
-        Your insights help us improve!
-      </p>
+      <p className="mb-4 text-sm text-slate-500">Help us improve the {modelName.replace(/([A-Z])/g, ' $1').trim()}.</p>
 
-      {!user && (
-        <div className="mb-6 p-4 bg-yellow-50 border-l-4 border-yellow-400 text-yellow-700 rounded-md">
-          <div className="flex">
-            <div className="flex-shrink-0"> <AlertTriangle className="h-5 w-5 text-yellow-500" aria-hidden="true" /> </div>
-            <div className="ml-3">
-              <p className="text-sm">
-                Please <Link to="/login" state={{ from: { pathname: window.location.pathname } }} className="font-medium underline hover:text-yellow-600">Login</Link> or <Link to="/signup" className="font-medium underline hover:text-yellow-600">Sign Up</Link> to share your feedback.
-              </p>
-            </div>
-          </div>
+      {guest && (
+        <div className="alert-warn mb-4 text-sm">
+          Please <Link to="/login" state={{ from: location }} className="font-semibold underline">log in</Link> or <Link to="/signup" className="font-semibold underline">sign up</Link> to leave feedback.
         </div>
       )}
 
-      {formMessage.text && (
-        <div className={`p-3 rounded-md mb-4 text-sm ${
-            formMessage.type === 'success' ? 'bg-green-50 text-green-700 border-l-4 border-green-400' 
-                                         : 'bg-red-50 text-red-700 border-l-4 border-red-400'
-        }`}>
-          {formMessage.text}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className={`space-y-6 ${!user ? 'opacity-50 pointer-events-none' : ''}`}>
+      <form onSubmit={handleSubmit} className={`space-y-4 ${guest ? 'pointer-events-none opacity-50' : ''}`} aria-disabled={guest}>
         <div>
-          <label className="block text-md font-medium text-slate-700 mb-2 text-center sm:text-left">
-            Your Rating:
-          </label>
-          <div className="flex justify-center sm:justify-start space-x-1 sm:space-x-2">
-            {[1, 2, 3, 4, 5].map((star) => (
-              <Star
-                key={star}
-                className={`cursor-pointer h-8 w-8 sm:h-10 sm:w-10 transition-all duration-150 ease-in-out transform hover:scale-110 ${
-                  rating >= star 
-                    ? 'text-yellow-400 fill-yellow-400' 
-                    : 'text-gray-300 hover:text-yellow-300'
-                }`}
-                onClick={() => user && setRating(star)}
-                aria-label={`Rate ${star} out of 5 stars`}
-              />
-            ))}
-          </div>
+          <span className="label">Your rating</span>
+          <StarRating value={rating} onChange={setRating} disabled={guest || submitting} />
         </div>
         <div>
-          <label htmlFor="feedbackComment" className="block text-sm font-medium text-slate-700 mb-1">
-            Your Comments (Optional):
-          </label>
+          <label htmlFor="feedback-comment" className="label">Comment <span className="font-normal text-slate-400">(optional)</span></label>
           <textarea
-            id="feedbackComment"
-            rows="4"
-            className="input-field w-full p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder="What did you like or dislike? Any suggestions?"
-            disabled={!user || submitting}
+            id="feedback-comment" rows={4} maxLength={1000} className="input-field resize-y" placeholder="What worked well? What could be better?"
+            value={comment} onChange={(e) => setComment(e.target.value)} disabled={guest || submitting}
           />
+          <p className="mt-1 text-right text-xs text-slate-400">{comment.length}/1000</p>
         </div>
-        <button
-          type="submit"
-          className="btn-primary w-full sm:w-auto flex items-center justify-center py-3 px-6 text-base disabled:opacity-70"
-          disabled={!user || isLoading || submitting || (rating === 0 && !existingFeedbackId)} // Disable if no rating for new feedback
-        >
-          {existingFeedbackId ? <Edit size={18} className="mr-2" /> : <Send size={18} className="mr-2" />}
-          {submitting ? 'Submitting...' : (existingFeedbackId ? 'Update Feedback' : 'Submit Feedback')}
+        {message && <div className={message.type === 'success' ? 'alert-success' : 'alert-error'} role="status">{message.text}</div>}
+        <button type="submit" disabled={guest || submitting || isLoading} className="btn-primary w-full sm:w-auto">
+          {submitting ? <><Loader2 size={16} className="animate-spin" /> Saving...</> : hasExisting ? 'Update feedback' : 'Submit feedback'}
         </button>
       </form>
-    </div>
+    </section>
   );
 };
 

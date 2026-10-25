@@ -1,36 +1,19 @@
-// -----------------------------------------------------------------------------
-// File: frontend/src/components/ColorScaleLegend.jsx
-// -----------------------------------------------------------------------------
-import React from 'react';
-
+// src/components/ColorScaleLegend.jsx
 const ColorScaleLegend = ({ minHmax, maxHmax, getColor }) => {
-  if (minHmax === Infinity || maxHmax === -Infinity) return null;
+  if (!Number.isFinite(minHmax) || !Number.isFinite(maxHmax)) return null;
 
-  const numSteps = 5;
-  const steps = [];
-  for (let i = 0; i <= numSteps; i++) {
-    const value = minHmax + (maxHmax - minHmax) * (i / numSteps);
-    steps.push({ value, color: getColor(value) });
-  }
+  const steps = 5;
+  const stops = Array.from({ length: steps + 1 }, (_, i) => {
+    const value = minHmax + (maxHmax - minHmax) * (i / steps);
+    return { value, color: getColor(value) };
+  });
 
   return (
-    <div className="p-2 bg-white shadow rounded-md mt-4">
-      <p className="text-sm font-medium text-gray-700 mb-1 text-center">HMAX Legend</p>
-      <div className="flex justify-between items-center px-2">
-        {steps.map((step, index) => (
-          <div key={index} className="text-center">
-            <div
-              className="w-6 h-4 rounded-sm mx-auto"
-              style={{ backgroundColor: step.color }}
-            ></div>
-            <span className="text-xs text-gray-600">{step.value.toFixed(2)}</span>
-          </div>
-        ))}
-      </div>
-      <div className="h-2 mt-1 flex rounded-full overflow-hidden">
-        {steps.slice(0, -1).map((step, index) => (
-             <div key={`grad-${index}`} className="h-full flex-1" style={{background: `linear-gradient(to right, ${step.color}, ${steps[index+1].color})`}}></div>
-        ))}
+    <div className="mx-auto w-full max-w-xl" aria-label="HMAX colour legend">
+      <p className="mb-1.5 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">Max water depth, HMAX (m)</p>
+      <div className="h-3 w-full rounded-full ring-1 ring-slate-200" style={{ background: `linear-gradient(to right, ${stops.map((s) => s.color).join(', ')})` }} />
+      <div className="mt-1.5 flex justify-between text-[11px] font-medium tabular-nums text-slate-600 sm:text-xs">
+        {stops.map((s, i) => <span key={i}>{s.value.toFixed(2)}</span>)}
       </div>
     </div>
   );

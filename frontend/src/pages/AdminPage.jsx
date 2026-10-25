@@ -1,311 +1,249 @@
 // src/pages/AdminPage.jsx
-import React, { useEffect, useState } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { LayoutDashboard, MessageSquare, Users, Inbox, Sparkles, Loader2, Search, Eye, Globe, UserCheck } from 'lucide-react';
+import PageHeader from '../components/PageHeader';
+import AiText from '../components/AiText';
+import { StarDisplay } from '../components/StarRating';
 import { useAuth } from '../context/AuthContext';
-import { getAdminDashboardStats, getAllFeedbackAdmin, replyToFeedbackAdmin, updateFeedbackStatusAdmin, getAllUsersAdmin, updateUserRoleAdmin } from '../services/api';
-import { Briefcase, MessageSquare, Users, BarChartHorizontalBig, Edit3, Send, Eye, Archive, UserCheck, UserX } from 'lucide-react';
+import { useAiEnabled } from '../hooks/useAiEnabled';
+import {
+  getAdminDashboardStats, getAllFeedbackAdmin, replyToFeedbackAdmin, updateFeedbackStatusAdmin,
+  getAllUsersAdmin, updateUserRoleAdmin, getContactMessagesAdmin, updateContactStatusAdmin, aiSummarizeFeedback,
+} from '../services/api';
 
-const StatCard = ({ title, value, icon: Icon, color = "blue" }) => (
-  <div className={`bg-white p-6 rounded-xl shadow-lg border-l-4 border-${color}-500`}>
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">{title}</p>
-        <p className="text-3xl font-semibold text-gray-800">{value ?? 'N/A'}</p>
-      </div>
-      <div className={`p-3 rounded-full bg-${color}-100 text-${color}-600`}>
-        <Icon size={24} />
-      </div>
+// Complete class names (not built dynamically) so Tailwind can find them.
+const TONES = {
+  blue: 'bg-brand-50 text-brand-600',
+  green: 'bg-emerald-50 text-emerald-600',
+  amber: 'bg-amber-50 text-amber-600',
+  violet: 'bg-violet-50 text-violet-600',
+};
+
+const StatCard = ({ title, value, icon: Icon, tone = 'blue' }) => (
+  <div className="panel flex items-center gap-4">
+    <span className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${TONES[tone]}`}><Icon size={22} /></span>
+    <div className="min-w-0">
+      <p className="truncate text-sm text-slate-500">{title}</p>
+      <p className="font-display text-2xl font-extrabold tabular-nums text-slate-900">{value ?? 'N/A'}</p>
     </div>
   </div>
 );
 
-const FeedbackItem = ({ feedback, onReply, onUpdateStatus }) => {
-  const [replyText, setReplyText] = useState('');
-  const [isReplying, setIsReplying] = useState(false);
+const STATUS_TONE = { new: 'bg-blue-100 text-blue-800', seen: 'bg-slate-100 text-slate-700', replied: 'bg-emerald-100 text-emerald-800', archived: 'bg-slate-200 text-slate-600', read: 'bg-slate-100 text-slate-700' };
 
-  const handleReplySubmit = (e) => {
-    e.preventDefault();
-    if (!replyText.trim()) return;
-    onReply(feedback._id, replyText);
-    setReplyText('');
-    setIsReplying(false);
+const FeedbackItem = ({ item, onReply, onStatus }) => {
+  const [replying, setReplying] = useState(false);
+  const [text, setText] = useState(item.adminReply || '');
+  const [busy, setBusy] = useState(false);
+
+  const send = async () => {
+    if (!text.trim()) return;
+    setBusy(true);
+    try { await onReply(item._id, text.trim()); setReplying(false); } finally { setBusy(false); }
   };
 
   return (
-    <div className="bg-slate-50 p-4 rounded-lg shadow mb-4 border border-slate-200">
-      <div className="flex justify-between items-start mb-2">
-        <div>
-          <p className="text-sm text-slate-600">
-            <span className="font-semibold">{feedback.user?.name || 'Anonymous User'}</span> ({feedback.user?.email || 'No email'})
-            {' for '} <span className="font-medium text-blue-600">{feedback.modelName}</span>
-          </p>
-          <p className="text-xs text-slate-400">
-            {new Date(feedback.createdAt).toLocaleString()} - Rating: {'⭐'.repeat(feedback.rating)}{'⚫'.repeat(5 - feedback.rating)}
-          </p>
+    <li className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate font-semibold text-slate-900">{item.user?.name || 'Unknown'} <span className="font-normal text-slate-500">· {item.user?.email}</span></p>
+          <p className="text-xs text-slate-500">{item.modelName} · {new Date(item.createdAt).toLocaleString()}</p>
         </div>
-        <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
-            feedback.status === 'new' ? 'bg-yellow-100 text-yellow-700' :
-            feedback.status === 'seen' ? 'bg-blue-100 text-blue-700' :
-            feedback.status === 'replied' ? 'bg-green-100 text-green-700' :
-            'bg-gray-100 text-gray-700'
-        }`}>
-            {feedback.status}
-        </span>
+        <div className="flex items-center gap-3"><StarDisplay value={item.rating} /><span className={`badge ${STATUS_TONE[item.status]}`}>{item.status}</span></div>
       </div>
-      <p className="text-slate-700 mb-2">{feedback.comment || "No comment provided."}</p>
-      
-      {feedback.adminReply && (
-        <div className="mt-2 p-3 bg-blue-50 border-l-2 border-blue-400 rounded-r-md">
-          <p className="text-xs font-semibold text-blue-700">Admin Reply (by {feedback.repliedBy?.name || 'Admin'} on {new Date(feedback.repliedAt).toLocaleDateString()}):</p>
-          <p className="text-sm text-blue-600">{feedback.adminReply}</p>
-        </div>
-      )}
+      {item.comment && <p className="mt-3 break-words text-sm text-slate-700">{item.comment}</p>}
+      {item.adminReply && !replying && <div className="mt-3 rounded-lg border-l-4 border-brand-500 bg-brand-50 p-3 text-sm"><p className="text-xs font-semibold text-brand-800">Your reply</p><p className="break-words text-slate-700">{item.adminReply}</p></div>}
 
-      <div className="mt-3 flex items-center space-x-2">
-        {!isReplying && !feedback.adminReply && feedback.status !== 'replied' && (
-          <button onClick={() => setIsReplying(true)} className="btn-secondary text-xs px-2 py-1 flex items-center">
-            <Edit3 size={14} className="mr-1" /> Reply
-          </button>
-        )}
-        {feedback.status === 'new' && (
-             <button onClick={() => onUpdateStatus(feedback._id, 'seen')} className="btn-secondary text-xs px-2 py-1 flex items-center">
-                <Eye size={14} className="mr-1" /> Mark as Seen
-            </button>
-        )}
-        {feedback.status !== 'archived' && (
-            <button onClick={() => onUpdateStatus(feedback._id, 'archived')} className="btn-secondary text-xs px-2 py-1 flex items-center">
-                <Archive size={14} className="mr-1" /> Archive
-            </button>
-        )}
-      </div>
-
-      {isReplying && (
-        <form onSubmit={handleReplySubmit} className="mt-3 space-y-2">
-          <textarea
-            value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            placeholder="Your reply..."
-            rows="2"
-            className="input-field w-full text-sm p-2"
-            required
-          />
-          <div className="flex space-x-2">
-            <button type="submit" className="btn-primary text-xs px-3 py-1 flex items-center">
-              <Send size={14} className="mr-1" /> Send Reply
-            </button>
-            <button type="button" onClick={() => setIsReplying(false)} className="btn-secondary text-xs px-3 py-1">
-              Cancel
-            </button>
+      {replying ? (
+        <div className="mt-3 space-y-2">
+          <label htmlFor={`reply-${item._id}`} className="sr-only">Reply</label>
+          <textarea id={`reply-${item._id}`} rows={3} maxLength={2000} className="input-field" value={text} onChange={(e) => setText(e.target.value)} placeholder="Write a reply that will be shown publicly..." />
+          <div className="flex gap-2">
+            <button type="button" disabled={busy || !text.trim()} onClick={send} className="btn-primary px-3 py-2 text-xs">{busy ? 'Sending...' : 'Send reply'}</button>
+            <button type="button" onClick={() => setReplying(false)} className="btn-secondary px-3 py-2 text-xs">Cancel</button>
           </div>
-        </form>
+        </div>
+      ) : (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => setReplying(true)} className="btn-secondary px-3 py-1.5 text-xs">{item.adminReply ? 'Edit reply' : 'Reply'}</button>
+          <label className="sr-only" htmlFor={`st-${item._id}`}>Status</label>
+          <select id={`st-${item._id}`} value={item.status} onChange={(e) => onStatus(item._id, e.target.value)} className="input-field w-auto py-1.5 text-xs">
+            {['new', 'seen', 'replied', 'archived'].map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
       )}
-    </div>
+    </li>
   );
 };
 
-const UserItem = ({ user, onUpdateRole }) => {
-    return (
-        <div className="bg-slate-50 p-4 rounded-lg shadow mb-4 border border-slate-200 flex justify-between items-center">
-            <div>
-                <p className="font-semibold text-slate-800">{user.name}</p>
-                <p className="text-sm text-slate-500">{user.email}</p>
-                <p className="text-xs text-slate-400">Joined: {new Date(user.createdAt).toLocaleDateString()}</p>
-                <p className="text-xs text-slate-400">Last Login: {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'N/A'}</p>
-                <p className="text-xs text-slate-400">Page Hits: {user.pageHits || 0}</p>
-            </div>
-            <div className="flex items-center space-x-2">
-                <span className={`px-3 py-1 text-xs font-semibold rounded-full ${user.role === 'admin' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                    {user.role}
-                </span>
-                {user.role === 'user' && (
-                    <button 
-                        onClick={() => onUpdateRole(user._id, 'admin')} 
-                        title="Make Admin"
-                        className="p-1.5 text-slate-500 hover:text-red-600 transition-colors rounded-full hover:bg-red-100">
-                        <UserCheck size={18}/>
-                    </button>
-                )}
-                {user.role === 'admin' && (
-                     <button 
-                        onClick={() => onUpdateRole(user._id, 'user')} 
-                        title="Make User"
-                        className="p-1.5 text-slate-500 hover:text-green-600 transition-colors rounded-full hover:bg-green-100">
-                        <UserX size={18}/>
-                    </button>
-                )}
-            </div>
-        </div>
-    );
-};
-
-
 const AdminPage = () => {
   const { user } = useAuth();
+  const aiEnabled = useAiEnabled();
+  const [tab, setTab] = useState('overview');
   const [stats, setStats] = useState(null);
   const [feedbacks, setFeedbacks] = useState([]);
   const [users, setUsers] = useState([]);
-  // const [contactRequests, setContactRequests] = useState([]);
-  // const [teamApplications, setTeamApplications] = useState([]);
-  // const [recentActivity, setRecentActivity] = useState([]);
+  const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [userQuery, setUserQuery] = useState('');
+  const [fbFilter, setFbFilter] = useState('all');
+  const [aiSummary, setAiSummary] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
 
-  const fetchData = async () => {
-    setLoading(true);
-    setError('');
+  const loadAll = useCallback(async () => {
+    setLoading(true); setError('');
     try {
-      const [statsRes, feedbackRes, usersRes] = await Promise.all([
-        getAdminDashboardStats(),
-        getAllFeedbackAdmin(),
-        getAllUsersAdmin()
-        // TODO: Add calls for contact requests, team applications, recent activity
-      ]);
-
-      if (statsRes.status === 'success') setStats(statsRes.data);
-      else console.warn("Failed to load admin stats:", statsRes.message);
-
-      if (feedbackRes.status === 'success') setFeedbacks(feedbackRes.data.feedbacks);
-      else console.warn("Failed to load feedback:", feedbackRes.message);
-
-      if (usersRes.status === 'success') setUsers(usersRes.data.users);
-      else console.warn("Failed to load users:", usersRes.message);
-
-    } catch (err) {
-      console.error("Failed to fetch admin data:", err);
-      setError(err.message || "Could not load admin dashboard data.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
+      const [s, f, u, m] = await Promise.all([getAdminDashboardStats(), getAllFeedbackAdmin(), getAllUsersAdmin(), getContactMessagesAdmin()]);
+      setStats(s.data); setFeedbacks(f.data.feedbacks); setUsers(u.data.users); setMessages(m.data.messages);
+    } catch (e) {
+      setError(e.message || 'Could not load admin data.');
+    } finally { setLoading(false); }
   }, []);
 
-  const handleReplyToFeedback = async (feedbackId, adminReply) => {
-    try {
-      const res = await replyToFeedbackAdmin(feedbackId, adminReply);
-      if (res.status === 'success') {
-        setFeedbacks(prev => prev.map(fb => fb._id === feedbackId ? res.data.feedback : fb));
-      } else {
-        alert(`Error replying: ${res.message}`);
-      }
-    } catch (err) {
-      alert(`Error replying: ${err.message}`);
-    }
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  const replaceFeedback = (fb) => setFeedbacks((prev) => prev.map((x) => (x._id === fb._id ? fb : x)));
+
+  const handleReply = async (id, text) => {
+    try { const r = await replyToFeedbackAdmin(id, text); replaceFeedback(r.data.feedback); } catch (e) { setError(e.message); throw e; }
+  };
+  const handleStatus = async (id, status) => {
+    try { const r = await updateFeedbackStatusAdmin(id, status); replaceFeedback(r.data.feedback); } catch (e) { setError(e.message); }
+  };
+  const handleRole = async (u, role) => {
+    try { const r = await updateUserRoleAdmin(u._id, role); setUsers((prev) => prev.map((x) => (x._id === u._id ? { ...x, ...r.data.user } : x))); } catch (e) { setError(e.message); }
+  };
+  const handleMessageStatus = async (id, status) => {
+    try { const r = await updateContactStatusAdmin(id, status); setMessages((prev) => prev.map((m) => (m._id === id ? r.data.message : m))); } catch (e) { setError(e.message); }
+  };
+  const summarize = async () => {
+    setAiBusy(true); setAiSummary(''); setError('');
+    try { const r = await aiSummarizeFeedback(); setAiSummary(r.data.summary); } catch (e) { setError(e.message); } finally { setAiBusy(false); }
   };
 
-  const handleUpdateFeedbackStatus = async (feedbackId, status) => {
-    try {
-        const res = await updateFeedbackStatusAdmin(feedbackId, status);
-        if (res.status === 'success') {
-            setFeedbacks(prev => prev.map(fb => fb._id === feedbackId ? res.data.feedback : fb));
-        } else {
-            alert(`Error updating status: ${res.message}`);
-        }
-    } catch (err) {
-        alert(`Error updating status: ${err.message}`);
-    }
-  };
+  const shownFeedback = useMemo(() => (fbFilter === 'all' ? feedbacks : feedbacks.filter((f) => f.status === fbFilter)), [feedbacks, fbFilter]);
+  const shownUsers = useMemo(() => {
+    const q = userQuery.trim().toLowerCase();
+    return q ? users.filter((u) => u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)) : users;
+  }, [users, userQuery]);
+  const unreadMessages = messages.filter((m) => m.status === 'new').length;
 
-  const handleUpdateUserRole = async (userId, role) => {
-    if (!window.confirm(`Are you sure you want to change this user's role to ${role}?`)) return;
-    try {
-        const res = await updateUserRoleAdmin(userId, role);
-        if (res.status === 'success') {
-            setUsers(prev => prev.map(u => u._id === userId ? res.data.user : u));
-        } else {
-            alert(`Error updating user role: ${res.message}`);
-        }
-    } catch (err) {
-        alert(`Error updating user role: ${err.message}`);
-    }
-  };
-
-
-  if (loading) {
-    return <div className="p-8 text-center text-lg font-medium text-slate-600">Loading Admin Dashboard...</div>;
-  }
-
-  if (error) {
-    return <div className="p-8 text-center text-red-600 bg-red-50 rounded-md shadow">Error: {error}</div>;
-  }
+  const TABS = [
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'feedback', label: 'Feedback', icon: MessageSquare, count: feedbacks.filter((f) => f.status === 'new').length },
+    { id: 'users', label: 'Users', icon: Users },
+    { id: 'messages', label: 'Messages', icon: Inbox, count: unreadMessages },
+  ];
 
   return (
-    <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 bg-slate-100 min-h-screen">
-      <header className="mb-10">
-        <h1 className="text-3xl sm:text-4xl font-bold text-slate-800">Admin Dashboard</h1>
-        <p className="text-slate-600 mt-1">Welcome, {user?.name || 'Admin'}. Oversee and manage your site.</p>
-      </header>
-
-      {/* Stats Section */}
-      <section className="mb-10">
-        <h2 className="text-2xl font-semibold text-slate-700 mb-4">Site Overview</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-          <StatCard title="Total Page Hits" value={stats?.totalPageHits} icon={BarChartHorizontalBig} color="blue" />
-          <StatCard title="Unique Visitors (IPs)" value={stats?.totalUniqueIPs} icon={Users} color="green" />
-          <StatCard title="Registered Users" value={stats?.totalRegisteredUsers} icon={Users} color="purple" />
-          <StatCard title="Total Feedback" value={stats?.totalFeedbackItems} icon={MessageSquare} color="yellow" />
-          <StatCard title="New Feedback" value={stats?.newFeedbackItems} icon={MessageSquare} color="red" />
+    <div>
+      <PageHeader eyebrow="Administration" title="Admin panel" description={`Signed in as ${user?.name}.`} />
+      <div className="container-page py-8">
+        <div className="-mx-4 mb-6 overflow-x-auto px-4 sm:mx-0 sm:px-0" role="tablist">
+          <div className="flex w-max gap-2 border-b border-slate-200 sm:w-full">
+            {TABS.map(({ id, label, icon: Icon, count }) => (
+              <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
+                className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition ${tab === id ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+                <Icon size={16} /> {label}
+                {count > 0 && <span className="badge bg-brand-600 text-white">{count}</span>}
+              </button>
+            ))}
+          </div>
         </div>
-      </section>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Feedback Management Section */}
-        <section className="lg:col-span-7 bg-white p-6 rounded-xl shadow-lg">
-            <h2 className="text-2xl font-semibold text-slate-700 mb-6">User Feedback</h2>
-            {feedbacks.length > 0 ? (
-                <div className="max-h-[600px] overflow-y-auto pr-2 space-y-4">
-                    {feedbacks.map(fb => (
-                        <FeedbackItem 
-                            key={fb._id} 
-                            feedback={fb} 
-                            onReply={handleReplyToFeedback}
-                            onUpdateStatus={handleUpdateFeedbackStatus}
-                        />
-                    ))}
-                </div>
-            ) : (
-                <p className="text-slate-500">No feedback submissions yet.</p>
-            )}
-        </section>
 
-        {/* User Management Section */}
-        <section className="lg:col-span-5 bg-white p-6 rounded-xl shadow-lg">
-            <h2 className="text-2xl font-semibold text-slate-700 mb-6">User Management</h2>
-            {users.length > 0 ? (
-                 <div className="max-h-[600px] overflow-y-auto pr-2 space-y-4">
-                    {users.map(u => (
-                        <UserItem key={u._id} user={u} onUpdateRole={handleUpdateUserRole} />
-                    ))}
-                </div>
-            ) : (
-                <p className="text-slate-500">No users found.</p>
+        {error && <p className="alert-error mb-6" role="alert">{error}</p>}
+        {loading ? <div className="space-y-4" aria-busy="true">{[1, 2, 3].map((i) => <div key={i} className="h-20 animate-pulse rounded-2xl bg-slate-200/60" />)}</div> : (
+          <>
+            {tab === 'overview' && (
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <StatCard title="Total page views" value={stats?.totalPageHits?.toLocaleString()} icon={Eye} tone="blue" />
+                <StatCard title="Unique visitors (IPs)" value={stats?.totalUniqueIPs?.toLocaleString()} icon={Globe} tone="violet" />
+                <StatCard title="Registered users" value={stats?.totalRegisteredUsers?.toLocaleString()} icon={UserCheck} tone="green" />
+                <StatCard title="Feedback items" value={stats?.totalFeedbackItems} icon={MessageSquare} tone="amber" />
+                <StatCard title="New feedback" value={stats?.newFeedbackItems} icon={MessageSquare} tone="blue" />
+                <StatCard title="Unread messages" value={stats?.newMessages} icon={Inbox} tone="green" />
+              </div>
             )}
-        </section>
+
+            {tab === 'feedback' && (
+              <div className="space-y-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="fb-filter" className="text-sm font-medium text-slate-600">Show</label>
+                    <select id="fb-filter" value={fbFilter} onChange={(e) => setFbFilter(e.target.value)} className="input-field w-auto py-2 text-sm">
+                      {['all', 'new', 'seen', 'replied', 'archived'].map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  {aiEnabled && (
+                    <button type="button" onClick={summarize} disabled={aiBusy} className="btn-primary self-start">
+                      {aiBusy ? <><Loader2 size={16} className="animate-spin" /> Analysing...</> : <><Sparkles size={16} /> AI summary of feedback</>}
+                    </button>
+                  )}
+                </div>
+                {aiSummary && <div className="rounded-2xl border border-brand-200 bg-gradient-to-br from-brand-50 to-white p-5"><p className="mb-2 flex items-center gap-2 font-semibold text-brand-900"><Sparkles size={16} /> AI feedback summary</p><AiText text={aiSummary} /></div>}
+                {shownFeedback.length === 0 ? <p className="panel text-center text-slate-500">No feedback in this view.</p> : (
+                  <ul className="space-y-4">{shownFeedback.map((f) => <FeedbackItem key={f._id} item={f} onReply={handleReply} onStatus={handleStatus} />)}</ul>
+                )}
+              </div>
+            )}
+
+            {tab === 'users' && (
+              <div className="space-y-4">
+                <div className="relative max-w-sm">
+                  <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <label htmlFor="user-search" className="sr-only">Search users</label>
+                  <input id="user-search" className="input-field pl-9" placeholder="Search name or email" value={userQuery} onChange={(e) => setUserQuery(e.target.value)} />
+                </div>
+                <div className="table-wrap bg-white">
+                  <table className="table-clean">
+                    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Joined</th><th className="text-right">Action</th></tr></thead>
+                    <tbody>
+                      {shownUsers.map((u) => (
+                        <tr key={u._id}>
+                          <td className="font-medium text-slate-900">{u.name}</td>
+                          <td className="text-slate-600">{u.email}</td>
+                          <td><span className={`badge ${u.role === 'admin' ? 'bg-brand-100 text-brand-800' : 'bg-slate-100 text-slate-700'}`}>{u.role}</span></td>
+                          <td className="whitespace-nowrap text-slate-500">{new Date(u.createdAt).toLocaleDateString()}</td>
+                          <td className="text-right">
+                            {u._id === user?._id ? <span className="text-xs text-slate-400">You</span> : (
+                              <button type="button" onClick={() => handleRole(u, u.role === 'admin' ? 'user' : 'admin')} className="btn-secondary px-3 py-1.5 text-xs">{u.role === 'admin' ? 'Make user' : 'Make admin'}</button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {shownUsers.length === 0 && <p className="text-center text-sm text-slate-500">No users match your search.</p>}
+              </div>
+            )}
+
+            {tab === 'messages' && (
+              messages.length === 0 ? <p className="panel text-center text-slate-500">No contact messages yet.</p> : (
+                <ul className="space-y-4">
+                  {messages.map((m) => (
+                    <li key={m._id} className={`rounded-2xl border bg-white p-4 shadow-soft sm:p-5 ${m.status === 'new' ? 'border-brand-300' : 'border-slate-200'}`}>
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-900">{m.name} {m.organization && <span className="font-normal text-slate-500">· {m.organization}</span>}</p>
+                          <a href={`mailto:${m.email}`} className="break-all text-sm text-brand-700 hover:underline">{m.email}</a>
+                        </div>
+                        <div className="text-right"><span className={`badge ${STATUS_TONE[m.status]}`}>{m.status}</span><p className="mt-1 text-xs text-slate-400">{new Date(m.createdAt).toLocaleString()}</p></div>
+                      </div>
+                      <p className="mt-3 whitespace-pre-wrap break-words text-sm text-slate-700">{m.message}</p>
+                      <div className="mt-4 flex gap-2">
+                        {m.status !== 'read' && <button type="button" onClick={() => handleMessageStatus(m._id, 'read')} className="btn-secondary px-3 py-1.5 text-xs">Mark as read</button>}
+                        {m.status !== 'archived' && <button type="button" onClick={() => handleMessageStatus(m._id, 'archived')} className="btn-secondary px-3 py-1.5 text-xs">Archive</button>}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )
+            )}
+          </>
+        )}
       </div>
-
-
-      {/* Placeholder for Contact/Team Requests and Recent Activity */}
-      <section className="mt-10 bg-white p-6 rounded-xl shadow-lg">
-        <h2 className="text-2xl font-semibold text-slate-700 mb-4">Other Management Areas</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-slate-50 p-4 rounded-lg shadow">
-                <h3 className="text-xl font-medium text-blue-600 mb-2">Contact Requests</h3>
-                <p className="text-slate-500 text-sm">Functionality to view and manage contact form submissions will be here.</p>
-                {/* <Link to="/admin/contact-requests" className="text-blue-500 hover:underline mt-2 inline-block text-sm">View Contact Requests</Link> */}
-            </div>
-            <div className="bg-slate-50 p-4 rounded-lg shadow">
-                <h3 className="text-xl font-medium text-blue-600 mb-2">Team Applications</h3>
-                <p className="text-slate-500 text-sm">Interface to review applications to join the team.</p>
-                {/* <Link to="/admin/team-applications" className="text-blue-500 hover:underline mt-2 inline-block text-sm">View Applications</Link> */}
-            </div>
-             <div className="bg-slate-50 p-4 rounded-lg shadow md:col-span-2">
-                <h3 className="text-xl font-medium text-blue-600 mb-2">Recent Site Activity</h3>
-                <p className="text-slate-500 text-sm">A log of important events or actions (e.g., new user signups, model runs by users, admin actions).</p>
-            </div>
-        </div>
-      </section>
-
     </div>
   );
 };

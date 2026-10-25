@@ -1,160 +1,68 @@
-
 // src/services/api.js
+// The ONLY place that knows backend URLs. Components call these named functions.
 import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:5000/api';
 
 const apiClient = axios.create({
   baseURL: API_URL,
-  withCredentials: true,
+  withCredentials: true, // send/receive the httpOnly auth cookie
 });
 
-// --- Model Run ---
-// formData should now include modelName: 'YourModelIdentifier'
-export const runModel = async (formData, onUploadProgress) => {
+// Every call returns response.data, or throws an object/Error that always has `.message`.
+const request = async (config, fallbackMessage) => {
   try {
-    // Ensure modelName is part of formData if your backend expects it in the body
-    // If modelName is already in formData (e.g., from FileUpload component), this is fine.
-    // Example: if (!formData.has('modelName')) formData.append('modelName', 'DefaultModel');
-    const response = await apiClient.post('/model/run', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      onUploadProgress,
-    });
+    const response = await apiClient.request(config);
     return response.data;
   } catch (error) {
-    console.error('Error running model:', error.response?.data || error.message);
-    throw error.response?.data || new Error(error.message || 'Network error for model run');
+    throw error.response?.data || new Error(error.message || fallbackMessage || 'Network error');
   }
 };
+
+// --- Auth / profile ---
+export const getMe = () => request({ method: 'get', url: '/users/me' }, 'Could not load your profile');
+export const updateProfile = (data) => request({ method: 'patch', url: '/users/me', data }, 'Could not update your profile');
+export const updatePassword = (data) => request({ method: 'patch', url: '/users/updateMyPassword', data }, 'Could not change your password');
+export const getMySummary = () => request({ method: 'get', url: '/users/me/summary' }, 'Could not load your activity');
+export const deleteAccount = (password) => request({ method: 'delete', url: '/users/me', data: { password } }, 'Could not delete your account');
+
+// --- Model run & history ---
+export const runModel = (formData, onUploadProgress) =>
+  request({ method: 'post', url: '/model/run', data: formData, onUploadProgress }, 'Network error for model run');
+export const getSimulationHistory = (modelName) => request({ method: 'get', url: `/history/${modelName}` }, 'Could not fetch simulation history');
+export const deleteHistoryItem = (id) => request({ method: 'delete', url: `/history/item/${id}` }, 'Could not delete the saved run');
 
 // --- Feedback ---
-export const submitOrUpdateFeedback = async (feedbackData) => {
-  try {
-    const response = await apiClient.post('/feedback', feedbackData);
-    return response.data;
-  } catch (error) {
-    console.error('Error submitting/updating feedback:', error.response?.data || error.message);
-    throw error.response?.data || new Error(error.message || 'Could not submit or update feedback');
-  }
-};
+export const submitOrUpdateFeedback = (data) => request({ method: 'post', url: '/feedback', data }, 'Could not submit feedback');
+export const getFeedbackForModel = (modelName) => request({ method: 'get', url: `/feedback/${modelName}` }, 'Could not fetch feedback');
+export const getCurrentUserFeedbackForModel = (modelName) =>
+  request({ method: 'get', url: `/feedback/user/${modelName}` }, 'Could not fetch your feedback');
 
-export const getFeedbackForModel = async (modelName) => {
-  try {
-    const response = await apiClient.get(`/feedback/${modelName}`);
-    return response.data;
-  } catch (error) {
-    console.error(`Error fetching feedback for ${modelName}:`, error.response?.data || error.message);
-    throw error.response?.data || new Error(error.message || `Could not fetch feedback for ${modelName}`);
-  }
-};
+// --- Contact ---
+export const sendContactMessage = (data) => request({ method: 'post', url: '/contact', data }, 'Could not send your message');
 
-export const getCurrentUserFeedbackForModel = async (modelName) => {
-  try {
-    const response = await apiClient.get(`/feedback/user/${modelName}`);
-    return response.data;
-  } catch (error) {
-    console.error(`Error fetching user's feedback for ${modelName}:`, error.response?.data || error.message);
-    if (error.response?.status !== 200 && error.response?.status !== 404) {
-         throw error.response?.data || new Error(error.message || `Could not fetch your feedback for ${modelName}`);
-    }
-    return error.response?.data || { status: 'fail', message: error.message };
-  }
-};
-
-// --- Simulation History ---
-export const getSimulationHistory = async (modelName) => {
-  try {
-    const response = await apiClient.get(`/history/${modelName}`);
-    return response.data; // Expected: { status: 'success', results: count, data: { history: [...] } }
-  } catch (error) {
-    console.error(`Error fetching simulation history for ${modelName}:`, error.response?.data || error.message);
-    throw error.response?.data || new Error(error.message || `Could not fetch simulation history for ${modelName}`);
-  }
-};
-
-
-// --- Visitor Stats ---
-// ... (rest of the stats and admin functions remain the same) ...
+// --- Stats ---
 export const recordPageVisit = async (pagePath) => {
-  try {
-    const response = await apiClient.post('/stats/visit', { pagePath });
-    return response.data;
-  } catch (error) {
-    console.warn('Could not record page visit:', error.response?.data?.message || error.message);
-    return null;
-  }
+  try { return await request({ method: 'post', url: '/stats/visit', data: { pagePath } }); } catch { return null; }
 };
+export const getVisitorStats = () => request({ method: 'get', url: '/stats/summary' }, 'Could not fetch site statistics');
 
-export const getVisitorStats = async () => {
-  try {
-    const response = await apiClient.get('/stats/summary');
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching visitor stats:', error.response?.data || error.message);
-    throw error.response?.data || new Error(error.message || 'Could not fetch site statistics');
-  }
+// --- AI ---
+export const getAiStatus = async () => {
+  try { return (await request({ method: 'get', url: '/ai/status' })).data.enabled; } catch { return false; }
 };
+export const aiExplainResults = (payload) => request({ method: 'post', url: '/ai/explain-results', data: payload }, 'AI request failed');
+export const aiChat = (payload) => request({ method: 'post', url: '/ai/chat', data: payload }, 'AI request failed');
+export const aiSummarizeFeedback = () => request({ method: 'post', url: '/ai/summarize-feedback' }, 'AI request failed');
 
-// --- Admin Panel Specific API Calls ---
-export const getAdminDashboardStats = async () => {
-  try {
-    const response = await apiClient.get('/admin/stats');
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching admin dashboard stats:', error.response?.data || error.message);
-    throw error.response?.data || new Error(error.message || 'Could not fetch admin dashboard statistics');
-  }
-};
-
-export const getAllFeedbackAdmin = async () => {
-  try {
-    const response = await apiClient.get('/admin/feedback');
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching all feedback (admin):', error.response?.data || error.message);
-    throw error.response?.data || new Error(error.message || 'Could not fetch feedback for admin');
-  }
-};
-
-export const replyToFeedbackAdmin = async (feedbackId, adminReply) => {
-  try {
-    const response = await apiClient.put(`/admin/feedback/${feedbackId}/reply`, { adminReply });
-    return response.data;
-  } catch (error) {
-    console.error('Error replying to feedback (admin):', error.response?.data || error.message);
-    throw error.response?.data || new Error(error.message || 'Could not reply to feedback');
-  }
-};
-
-export const updateFeedbackStatusAdmin = async (feedbackId, status) => {
-    try {
-        const response = await apiClient.patch(`/admin/feedback/${feedbackId}/status`, { status });
-        return response.data;
-    } catch (error) {
-        console.error('Error updating feedback status (admin):', error.response?.data || error.message);
-        throw error.response?.data || new Error(error.message || 'Could not update feedback status');
-    }
-};
-
-export const getAllUsersAdmin = async () => {
-    try {
-        const response = await apiClient.get('/admin/users');
-        return response.data;
-    } catch (error) {
-        console.error('Error fetching all users (admin):', error.response?.data || error.message);
-        throw error.response?.data || new Error(error.message || 'Could not fetch users for admin');
-    }
-};
-
-export const updateUserRoleAdmin = async (userId, role) => {
-    try {
-        const response = await apiClient.patch(`/admin/users/${userId}/role`, { role });
-        return response.data;
-    } catch (error) {
-        console.error('Error updating user role (admin):', error.response?.data || error.message);
-        throw error.response?.data || new Error(error.message || 'Could not update user role');
-    }
-};
-
+// --- Admin ---
+export const getAdminDashboardStats = () => request({ method: 'get', url: '/admin/stats' }, 'Could not fetch dashboard statistics');
+export const getAllFeedbackAdmin = () => request({ method: 'get', url: '/admin/feedback' }, 'Could not fetch feedback');
+export const replyToFeedbackAdmin = (id, adminReply) => request({ method: 'put', url: `/admin/feedback/${id}/reply`, data: { adminReply } }, 'Could not reply to feedback');
+export const updateFeedbackStatusAdmin = (id, status) => request({ method: 'patch', url: `/admin/feedback/${id}/status`, data: { status } }, 'Could not update status');
+export const getAllUsersAdmin = () => request({ method: 'get', url: '/admin/users' }, 'Could not fetch users');
+export const updateUserRoleAdmin = (id, role) => request({ method: 'patch', url: `/admin/users/${id}/role`, data: { role } }, 'Could not update the role');
+export const getContactMessagesAdmin = () => request({ method: 'get', url: '/admin/contact-requests' }, 'Could not fetch messages');
+export const updateContactStatusAdmin = (id, status) => request({ method: 'patch', url: `/admin/contact-requests/${id}/status`, data: { status } }, 'Could not update the message');
 
 export default apiClient;

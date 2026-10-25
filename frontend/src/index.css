@@ -1,41 +1,140 @@
 @import "tailwindcss";
 
-body {
+/* ==========================================================================
+   URO LAB design system
+   Colour story: deep ocean blues + teal accent on clean, cool-grey surfaces.
+   The default Tailwind "blue" scale is re-mapped to our brand "ocean" scale, so every
+   existing `bg-blue-600`, `text-blue-800`... automatically follows the new theme.
+   ========================================================================== */
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Plus Jakarta Sans Variable", "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+
+  /* Brand ocean scale (also available as bg-brand-600 etc.) */
+  --color-brand-50: #eefafd;
+  --color-brand-100: #d6f1f9;
+  --color-brand-200: #b2e4f2;
+  --color-brand-300: #7ad0e8;
+  --color-brand-400: #3bb4d8;
+  --color-brand-500: #1a97bd;
+  --color-brand-600: #137a9f;
+  --color-brand-700: #146281;
+  --color-brand-800: #17506a;
+  --color-brand-900: #17435a;
+  --color-brand-950: #0a2535;
+
+  /* Re-map Tailwind blue -> brand */
+  --color-blue-50: #eefafd;
+  --color-blue-100: #d6f1f9;
+  --color-blue-200: #b2e4f2;
+  --color-blue-300: #7ad0e8;
+  --color-blue-400: #3bb4d8;
+  --color-blue-500: #1a97bd;
+  --color-blue-600: #137a9f;
+  --color-blue-700: #146281;
+  --color-blue-800: #17506a;
+  --color-blue-900: #17435a;
+  --color-blue-950: #0a2535;
+
+  /* Deep navy for dark surfaces (hero, footer) */
+  --color-navy-700: #14324a;
+  --color-navy-800: #0f2a40;
+  --color-navy-900: #0a1f31;
+  --color-navy-950: #06141f;
+
+  --shadow-soft: 0 1px 2px rgb(15 42 64 / 0.05), 0 4px 16px -2px rgb(15 42 64 / 0.08);
+  --shadow-lift: 0 2px 4px rgb(15 42 64 / 0.06), 0 12px 32px -4px rgb(15 42 64 / 0.16);
+
+  --animate-fade-up: fade-up 0.5s ease-out both;
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+@layer base {
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  body {
     margin: 0;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-      sans-serif;
+    font-family: var(--font-sans);
+    color: var(--color-slate-700);
+    background: var(--color-slate-50);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
-  
-  /* Custom utility classes */
-  .section-padding {
-    @apply py-12 px-4 sm:px-6 lg:px-8;
-  }
-  
+  h1, h2, h3, h4 { font-family: var(--font-display); letter-spacing: -0.02em; }
+  img { max-width: 100%; }
+  :focus-visible { outline: 2px solid var(--color-brand-500); outline-offset: 2px; border-radius: 4px; }
+  ::selection { background: var(--color-brand-200); color: var(--color-brand-950); }
+}
+
+/* ---------- Reusable building blocks (keep the old class names working) ---------- */
+@layer components {
+  .container-page { @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8; }
+
+  .section-padding { @apply py-12 px-4 sm:px-6 sm:py-16 lg:px-8 lg:py-20; }
+
   .heading-primary {
-    @apply text-3xl font-bold text-blue-900 mb-6;
+    @apply text-3xl font-extrabold tracking-tight text-brand-950 mb-4 sm:text-4xl;
   }
-  
   .heading-secondary {
-    @apply text-2xl font-semibold text-blue-800 mb-4;
+    @apply text-xl font-bold tracking-tight text-brand-900 mb-3 sm:text-2xl;
   }
-  
+  .eyebrow {
+    @apply inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-brand-600;
+  }
+  .lead { @apply text-base leading-relaxed text-slate-600 sm:text-lg; }
+
   .card {
-    @apply bg-white rounded-lg shadow-md overflow-hidden transition-transform duration-300 hover:shadow-lg hover:scale-[1.02];
+    @apply bg-white rounded-2xl border border-slate-200/80 shadow-soft overflow-hidden transition duration-300 hover:shadow-lift hover:-translate-y-0.5;
   }
-  
+  .panel {
+    @apply bg-white rounded-2xl border border-slate-200/80 shadow-soft p-4 sm:p-6;
+  }
+
   .btn-primary {
-    @apply bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded shadow transition-colors duration-300;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition
+           hover:bg-brand-700 active:scale-[0.98] focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-brand-600;
   }
-  
   .btn-secondary {
-    @apply bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded shadow transition-colors duration-300;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition
+           hover:bg-slate-50 hover:border-slate-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60;
   }
-  
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60;
+  }
+
   .input-field {
-    @apply w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+    @apply block w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition
+           placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/15 disabled:bg-slate-100 disabled:text-slate-500;
   }
-  
-  
+  .label { @apply mb-1.5 block text-sm font-medium text-slate-700; }
+
+  .badge { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold; }
+  .alert-error { @apply rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800; }
+  .alert-success { @apply rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800; }
+  .alert-info { @apply rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900; }
+  .alert-warn { @apply rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900; }
+
+  /* Page header band used at the top of inner pages */
+  .page-hero {
+    @apply relative overflow-hidden bg-navy-900 text-white;
+    background-image:
+      radial-gradient(60rem 30rem at 85% -20%, rgb(26 151 189 / 0.35), transparent 60%),
+      radial-gradient(40rem 24rem at -10% 120%, rgb(59 180 216 / 0.18), transparent 60%);
+  }
+
+  /* Table that never breaks the layout on phones: wrap it in .table-wrap */
+  .table-wrap { @apply w-full overflow-x-auto rounded-xl border border-slate-200; }
+  .table-clean { @apply w-full min-w-[40rem] text-left text-sm; }
+  .table-clean th { @apply bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500; }
+  .table-clean td { @apply border-t border-slate-100 px-4 py-3 align-middle; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

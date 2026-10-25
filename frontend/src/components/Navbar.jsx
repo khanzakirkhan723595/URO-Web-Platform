@@ -1,213 +1,272 @@
 // src/components/Navbar.jsx
 import { useState, useEffect, useRef } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext'; // Import useAuth
-import { LogIn, UserPlus, LogOut, UserCircle, ShieldCheck } from 'lucide-react'; // Icons
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { LogIn, UserPlus, LogOut, ShieldCheck, ChevronDown, Menu, X, Waves, Wind, Layers, UserCircle, Sparkles } from 'lucide-react';
+
+const MODELS = [
+  { to: '/models/flood-model', label: 'Flood Model', desc: 'Inland 2D flood simulation', icon: Waves },
+  { to: '/models/storm-surge', label: 'Storm Surge Model', desc: 'Coastal inundation (coming soon)', icon: Wind },
+  { to: '/models/coupled-model', label: 'Tightly Coupled Model', desc: 'Inland + coastal (coming soon)', icon: Layers },
+];
+
+const LINKS = [
+  { to: '/', label: 'Home', end: true },
+  { to: '/about', label: 'About' },
+  { to: '/team', label: 'Team' },
+  { to: '/contact', label: 'Contact' },
+];
+
+const initials = (name = '') =>
+  name.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') || 'U';
+
+const desktopLink = ({ isActive }) =>
+  `relative rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+    isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+  }`;
 
 const Navbar = () => {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isModelsDropdownOpen, setIsModelsDropdownOpen] = useState(false);
-  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false); // For user menu
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [modelsOpen, setModelsOpen] = useState(false);
+  const [userOpen, setUserOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout, loadingAuth } = useAuth(); // Get user and logout function
+  const { user, logout, loadingAuth } = useAuth();
 
-  const userDropdownRef = useRef(null);
-  const modelsDropdownRef = useRef(null);
-  const mobileMenuButtonRef = useRef(null);
+  const modelsRef = useRef(null);
+  const userRef = useRef(null);
 
+  const isModelPage = location.pathname.startsWith('/models/');
 
-  const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
-  const toggleModelsDropdown = () => setIsModelsDropdownOpen(!isModelsDropdownOpen);
-  const toggleUserDropdown = () => setIsUserDropdownOpen(!isUserDropdownOpen);
-
-  const closeDropdowns = () => {
-    setIsModelsDropdownOpen(false);
-    setIsUserDropdownOpen(false);
-  };
-  
-  const handleLogout = async () => {
-    await logout();
-    closeDropdowns();
-    setIsMenuOpen(false); // Close mobile menu on logout
-    navigate('/'); // Redirect to home after logout
-  };
-
-  // Close dropdowns when clicking outside
+  // Close everything when the route changes
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) {
-        setIsUserDropdownOpen(false);
-      }
-      if (modelsDropdownRef.current && !modelsDropdownRef.current.contains(event.target) &&
-          mobileMenuButtonRef.current && !mobileMenuButtonRef.current.contains(event.target)) {
-        // Check if not clicking the mobile menu button for models dropdown
-        const modelsButtonInDesktop = document.getElementById('desktop-models-button');
-        if (modelsButtonInDesktop && !modelsButtonInDesktop.contains(event.target)) {
-             setIsModelsDropdownOpen(false);
-        }
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    setMenuOpen(false);
+    setModelsOpen(false);
+    setUserOpen(false);
+  }, [location.pathname]);
+
+  // Shadow once the page scrolls
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  // Click outside / Escape closes the dropdowns
+  useEffect(() => {
+    const onDown = (e) => {
+      if (modelsRef.current && !modelsRef.current.contains(e.target)) setModelsOpen(false);
+      if (userRef.current && !userRef.current.contains(e.target)) setUserOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { setModelsOpen(false); setUserOpen(false); setMenuOpen(false); }
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, []);
 
-  const isActive = (path) => location.pathname === path ? 'text-blue-500 font-bold' : 'text-gray-700 hover:text-blue-600';
-  const isModelPage = location.pathname.startsWith('/models/');
-  const currentModelPath = isModelPage ? location.pathname : '';
+  // Lock page scroll while the mobile drawer is open
+  useEffect(() => {
+    document.body.style.overflow = menuOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [menuOpen]);
 
-  // Common link class for mobile menu
-  const mobileLinkClass = (path) => 
-    `block pl-3 pr-4 py-2 border-l-4 ${location.pathname === path ? 'border-blue-500 text-blue-700 bg-blue-50' : 'border-transparent text-gray-600 hover:bg-gray-50 hover:border-gray-300 hover:text-gray-800'}`;
-  
-  const mobileModelLinkClass = (path) =>
-    `block pl-3 pr-4 py-2 border-l-4 ${currentModelPath === path ? 'border-blue-300 text-blue-700 bg-blue-50' : 'border-transparent text-gray-600 hover:bg-gray-50 hover:border-gray-300 hover:text-gray-800'}`;
+  const handleLogout = async () => {
+    await logout();
+    setUserOpen(false);
+    setMenuOpen(false);
+    navigate('/');
+  };
 
   return (
-    <nav className="bg-white shadow-md sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          {/* Left side: Logo and main navigation */}
-          <div className="flex">
-            <Link to="/" className="flex-shrink-0 flex items-center">
-              <img src="/logo.png" alt="URO Flood Lab Logo" className="h-10 w-10 mr-2" 
-                   onError={(e) => { e.target.onerror = null; e.target.src="https://placehold.co/40x40/3b82f6/ffffff?text=L&font=inter"; }}/>
-              <span className="text-xl font-bold text-blue-800">URO Flood Lab</span>
-            </Link>
-            <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-              <Link to="/" className={`inline-flex items-center px-1 pt-1 border-b-2 ${location.pathname === '/' ? 'border-blue-500' : 'border-transparent'} ${isActive('/')}`}>Home</Link>
-              <Link to="/about" className={`inline-flex items-center px-1 pt-1 border-b-2 ${location.pathname === '/about' ? 'border-blue-500' : 'border-transparent'} ${isActive('/about')}`}>About</Link>
-              
-              {/* Models Dropdown - Desktop */}
-              <div className="relative flex items-center" ref={modelsDropdownRef}>
-                <button
-                  id="desktop-models-button"
-                  onClick={toggleModelsDropdown}
-                  className={`inline-flex h-full items-center px-1 pt-1 border-b-2 ${isModelPage ? 'border-blue-500 text-blue-500 font-bold' : 'border-transparent text-gray-700 hover:text-blue-600'}`}
-                >
-                  Models
-                  <svg className={`ml-1 h-5 w-5 transition-transform ${isModelsDropdownOpen ? 'rotate-180' : ''}`} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-                </button>
-                {isModelsDropdownOpen && (
-                  <div className="absolute left-0 top-full mt-1 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none py-1">
-                    <Link to="/models/flood-model" className={`block px-4 py-2 text-sm ${currentModelPath === '/models/flood-model' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}`} onClick={closeDropdowns}>Flood Model</Link>
-                    <Link to="/models/storm-surge" className={`block px-4 py-2 text-sm ${currentModelPath === '/models/storm-surge' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}`} onClick={closeDropdowns}>Storm Surge Model</Link>
-                    <Link to="/models/coupled-model" className={`block px-4 py-2 text-sm ${currentModelPath === '/models/coupled-model' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}`} onClick={closeDropdowns}>Tightly Coupled Model</Link>
-                  </div>
-                )}
-              </div>
-              <Link to="/team" className={`inline-flex items-center px-1 pt-1 border-b-2 ${location.pathname === '/team' ? 'border-blue-500' : 'border-transparent'} ${isActive('/team')}`}>Team</Link>
-              <Link to="/contact" className={`inline-flex items-center px-1 pt-1 border-b-2 ${location.pathname === '/contact' ? 'border-blue-500' : 'border-transparent'} ${isActive('/contact')}`}>Contact</Link>
-            </div>
-          </div>
+    <header
+      className={`sticky top-0 z-50 border-b bg-white/85 backdrop-blur-lg transition-shadow ${
+        scrolled ? 'border-slate-200 shadow-soft' : 'border-transparent'
+      }`}
+    >
+      <nav className="container-page flex h-16 items-center justify-between gap-4" aria-label="Main navigation">
+        {/* Brand */}
+        <Link to="/" className="flex min-w-0 items-center gap-2.5">
+          <img
+            src="/logo.png"
+            alt=""
+            className="h-9 w-9 flex-shrink-0 rounded-lg object-contain"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
+          <span className="truncate font-display text-lg font-extrabold tracking-tight text-brand-950">
+            URO <span className="text-brand-600">Flood Lab</span>
+          </span>
+        </Link>
 
-          {/* Right side: Auth links or User menu */}
-          <div className="hidden sm:ml-6 sm:flex sm:items-center">
-            {!loadingAuth && user ? (
-              <div className="relative" ref={userDropdownRef}>
-                <button onClick={toggleUserDropdown} className="flex items-center text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                  <UserCircle size={28} className="text-gray-600 hover:text-blue-600" />
-                  <span className="ml-2 text-gray-700 hover:text-blue-600 hidden md:inline">{user.name}</span>
-                </button>
-                {isUserDropdownOpen && (
-                  <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5 focus:outline-none">
-                    {/* <Link to="/profile" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={closeDropdowns}>Your Profile</Link> */}
-                    {user.role === 'admin' && (
-                      <Link to="/admin" className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={closeDropdowns}>
-                        <ShieldCheck size={16} className="mr-2 text-blue-600" /> Admin Panel
-                      </Link>
-                    )}
-                    <button onClick={handleLogout} className="w-full text-left flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                      <LogOut size={16} className="mr-2 text-red-500"/> Logout
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : !loadingAuth && (
-              <div className="flex items-center space-x-3">
-                <Link to="/login" className="text-sm font-medium text-gray-600 hover:text-blue-600 flex items-center">
-                  <LogIn size={18} className="mr-1"/> Login
-                </Link>
-                <Link to="/signup" className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-md flex items-center">
-                  <UserPlus size={18} className="mr-1"/> Sign Up
-                </Link>
-              </div>
-            )}
-            {loadingAuth && <div className="text-sm text-gray-500">Loading...</div>}
-          </div>
+        {/* Desktop links (from lg up: enough room for all items) */}
+        <div className="hidden items-center gap-1 lg:flex">
+          <NavLink to="/" end className={desktopLink}>Home</NavLink>
+          <NavLink to="/about" className={desktopLink}>About</NavLink>
 
-          {/* Mobile menu button */}
-          <div className="-mr-2 flex items-center sm:hidden">
+          <div className="relative" ref={modelsRef}>
             <button
-              ref={mobileMenuButtonRef}
-              onClick={toggleMenu}
-              className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={modelsOpen}
+              onClick={() => setModelsOpen((o) => !o)}
+              className={`flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                isModelPage ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+              }`}
             >
-              <span className="sr-only">Open main menu</span>
-              {isMenuOpen ? <svg className="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                           : <svg className="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>}
+              Models
+              <ChevronDown size={16} className={`transition-transform ${modelsOpen ? 'rotate-180' : ''}`} />
             </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile menu */}
-      <div className={`${isMenuOpen ? 'block' : 'hidden'} sm:hidden border-t border-gray-200`}>
-        <div className="pt-2 pb-3 space-y-1">
-          <Link to="/" className={mobileLinkClass('/')} onClick={toggleMenu}>Home</Link>
-          <Link to="/about" className={mobileLinkClass('/about')} onClick={toggleMenu}>About</Link>
-          
-          {/* Mobile Models Dropdown */}
-          <div>
-            <button onClick={toggleModelsDropdown} className={`w-full text-left block pl-3 pr-4 py-2 border-l-4 ${isModelPage ? 'border-blue-500 text-blue-700 bg-blue-50' : 'border-transparent text-gray-600'} flex justify-between items-center`}>
-              <span>Models</span>
-              <svg className={`h-5 w-5 transition-transform ${isModelsDropdownOpen ? 'rotate-180' : ''}`} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-            </button>
-            {isModelsDropdownOpen && (
-              <div className="pl-6 space-y-1 py-1">
-                <Link to="/models/flood-model" className={mobileModelLinkClass('/models/flood-model')} onClick={toggleMenu}>Flood Model</Link>
-                <Link to="/models/storm-surge" className={mobileModelLinkClass('/models/storm-surge')} onClick={toggleMenu}>Storm Surge Model</Link>
-                <Link to="/models/coupled-model" className={mobileModelLinkClass('/models/coupled-model')} onClick={toggleMenu}>Tightly Coupled Model</Link>
+            {modelsOpen && (
+              <div role="menu" className="absolute left-0 top-full mt-2 w-80 animate-fade-up rounded-2xl border border-slate-200 bg-white p-2 shadow-lift">
+                {MODELS.map(({ to, label, desc, icon: Icon }) => (
+                  <Link key={to} to={to} role="menuitem" className="flex items-start gap-3 rounded-xl p-3 transition-colors hover:bg-slate-50">
+                    <span className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+                      <Icon size={18} />
+                    </span>
+                    <span>
+                      <span className="block text-sm font-semibold text-slate-900">{label}</span>
+                      <span className="block text-xs text-slate-500">{desc}</span>
+                    </span>
+                  </Link>
+                ))}
               </div>
             )}
           </div>
-          <Link to="/team" className={mobileLinkClass('/team')} onClick={toggleMenu}>Team</Link>
-          <Link to="/contact" className={mobileLinkClass('/contact')} onClick={toggleMenu}>Contact</Link>
+
+          <NavLink to="/team" className={desktopLink}>Team</NavLink>
+          <NavLink to="/contact" className={desktopLink}>Contact</NavLink>
+          {user && <NavLink to="/assistant" className={desktopLink}><span className="inline-flex items-center gap-1.5"><Sparkles size={14} /> AI Assistant</span></NavLink>}
         </div>
-        {/* Mobile Auth Links / User Info */}
-        <div className="pt-4 pb-3 border-t border-gray-200">
-          {!loadingAuth && user ? (
-            <>
-              <div className="flex items-center px-4 mb-2">
-                <UserCircle size={32} className="text-gray-500 mr-3" />
-                <div>
-                  <div className="text-base font-medium text-gray-800">{user.name}</div>
-                  <div className="text-sm font-medium text-gray-500">{user.email}</div>
-                </div>
-              </div>
-              <div className="mt-3 space-y-1">
-                {user.role === 'admin' && (
-                  <Link to="/admin" className={`${mobileLinkClass('/admin')} flex items-center`} onClick={toggleMenu}>
-                     <ShieldCheck size={18} className="mr-2 text-blue-600" /> Admin Panel
+
+        {/* Desktop auth */}
+        <div className="hidden items-center gap-2 lg:flex">
+          {loadingAuth ? (
+            <span className="h-9 w-24 animate-pulse rounded-lg bg-slate-100" aria-hidden="true" />
+          ) : user ? (
+            <div className="relative" ref={userRef}>
+              <button
+                type="button"
+                onClick={() => setUserOpen((o) => !o)}
+                aria-haspopup="menu"
+                aria-expanded={userOpen}
+                className="flex items-center gap-2 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-3 transition hover:border-slate-300 hover:shadow-sm"
+              >
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">{initials(user.name)}</span>
+                <span className="max-w-[9rem] truncate text-sm font-medium text-slate-700">{user.name}</span>
+                <ChevronDown size={14} className={`text-slate-400 transition-transform ${userOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {userOpen && (
+                <div role="menu" className="absolute right-0 mt-2 w-60 animate-fade-up rounded-2xl border border-slate-200 bg-white p-2 shadow-lift">
+                  <div className="border-b border-slate-100 px-3 py-2">
+                    <p className="truncate text-sm font-semibold text-slate-900">{user.name}</p>
+                    <p className="truncate text-xs text-slate-500">{user.email}</p>
+                    {user.role === 'admin' && <span className="badge mt-1 bg-brand-100 text-brand-800">Administrator</span>}
+                  </div>
+                  <Link to="/profile" role="menuitem" className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                    <UserCircle size={16} className="text-brand-600" /> My profile
                   </Link>
-                )}
-                {/* <Link to="/profile" className={mobileLinkClass('/profile')} onClick={toggleMenu}>Your Profile</Link> */}
-                <button onClick={() => { handleLogout(); toggleMenu(); }} className={`${mobileLinkClass('/logout')} w-full text-left flex items-center`}>
-                  <LogOut size={18} className="mr-2 text-red-500"/> Logout
-                </button>
-              </div>
-            </>
-          ) : !loadingAuth && (
-            <div className="space-y-1 px-2">
-              <Link to="/login" className="block rounded-md px-3 py-2 text-base font-medium text-gray-700 hover:bg-gray-50 hover:text-gray-900" onClick={toggleMenu}>Login</Link>
-              <Link to="/signup" className="block rounded-md px-3 py-2 text-base font-medium text-white bg-blue-600 hover:bg-blue-700" onClick={toggleMenu}>Sign Up</Link>
+                  {user.role === 'admin' && (
+                    <Link to="/admin" role="menuitem" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                      <ShieldCheck size={16} className="text-brand-600" /> Admin panel
+                    </Link>
+                  )}
+                  <button type="button" role="menuitem" onClick={handleLogout} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-red-50 hover:text-red-700">
+                    <LogOut size={16} /> Log out
+                  </button>
+                </div>
+              )}
             </div>
+          ) : (
+            <>
+              <Link to="/login" className="btn-ghost"><LogIn size={16} /> Log in</Link>
+              <Link to="/signup" className="btn-primary"><UserPlus size={16} /> Sign up</Link>
+            </>
           )}
-           {loadingAuth && <div className="px-4 py-2 text-sm text-gray-500">Loading user...</div>}
         </div>
-      </div>
-    </nav>
+
+        {/* Mobile menu button */}
+        <button
+          type="button"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-700 transition hover:bg-slate-100 lg:hidden"
+          onClick={() => setMenuOpen((o) => !o)}
+          aria-expanded={menuOpen}
+          aria-controls="mobile-menu"
+          aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+        >
+          {menuOpen ? <X size={22} /> : <Menu size={22} />}
+        </button>
+      </nav>
+
+      {/* Mobile drawer */}
+      {menuOpen && (
+        <div id="mobile-menu" className="max-h-[calc(100dvh-4rem)] overflow-y-auto border-t border-slate-200 bg-white lg:hidden">
+          <div className="container-page space-y-1 py-4">
+            {LINKS.slice(0, 2).map(({ to, label, end }) => (
+              <NavLink key={to} to={to} end={end} className={({ isActive }) => `block rounded-xl px-4 py-3 text-base font-medium ${isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-700 hover:bg-slate-50'}`}>{label}</NavLink>
+            ))}
+
+            <button
+              type="button"
+              onClick={() => setModelsOpen((o) => !o)}
+              aria-expanded={modelsOpen}
+              className={`flex w-full items-center justify-between rounded-xl px-4 py-3 text-base font-medium ${isModelPage ? 'bg-brand-50 text-brand-700' : 'text-slate-700 hover:bg-slate-50'}`}
+            >
+              Models <ChevronDown size={18} className={`transition-transform ${modelsOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {modelsOpen && (
+              <div className="ml-4 space-y-1 border-l-2 border-brand-100 pl-3">
+                {MODELS.map(({ to, label }) => (
+                  <NavLink key={to} to={to} className={({ isActive }) => `block rounded-lg px-3 py-2.5 text-sm ${isActive ? 'font-semibold text-brand-700' : 'text-slate-600 hover:bg-slate-50'}`}>{label}</NavLink>
+                ))}
+              </div>
+            )}
+
+            {LINKS.slice(2).map(({ to, label }) => (
+              <NavLink key={to} to={to} className={({ isActive }) => `block rounded-xl px-4 py-3 text-base font-medium ${isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-700 hover:bg-slate-50'}`}>{label}</NavLink>
+            ))}
+
+            <div className="mt-3 border-t border-slate-200 pt-4">
+              {loadingAuth ? null : user ? (
+                <>
+                  <div className="mb-3 flex items-center gap-3 px-2">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-600 font-bold text-white">{initials(user.name)}</span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">{user.name}</p>
+                      <p className="truncate text-xs text-slate-500">{user.email}</p>
+                    </div>
+                  </div>
+                  <Link to="/profile" className="flex items-center gap-2 rounded-xl px-4 py-3 text-base font-medium text-slate-700 hover:bg-slate-50">
+                    <UserCircle size={18} className="text-brand-600" /> My profile
+                  </Link>
+                  <Link to="/assistant" className="flex items-center gap-2 rounded-xl px-4 py-3 text-base font-medium text-slate-700 hover:bg-slate-50">
+                    <Sparkles size={18} className="text-brand-600" /> AI Assistant
+                  </Link>
+                  {user.role === 'admin' && (
+                    <Link to="/admin" className="flex items-center gap-2 rounded-xl px-4 py-3 text-base font-medium text-slate-700 hover:bg-slate-50">
+                      <ShieldCheck size={18} className="text-brand-600" /> Admin panel
+                    </Link>
+                  )}
+                  <button type="button" onClick={handleLogout} className="flex w-full items-center gap-2 rounded-xl px-4 py-3 text-left text-base font-medium text-red-600 hover:bg-red-50">
+                    <LogOut size={18} /> Log out
+                  </button>
+                </>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <Link to="/login" className="btn-secondary">Log in</Link>
+                  <Link to="/signup" className="btn-primary">Sign up</Link>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </header>
   );
 };
 

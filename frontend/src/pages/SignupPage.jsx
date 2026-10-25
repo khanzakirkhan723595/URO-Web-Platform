@@ -1,8 +1,22 @@
 // src/pages/SignupPage.jsx
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus } from 'lucide-react';
+import AuthLayout from '../components/AuthLayout';
+import PasswordInput from '../components/PasswordInput';
+import { Loader2 } from 'lucide-react';
+
+// Simple strength meter: length + variety
+const strength = (pw) => {
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+  if (/\d/.test(pw) && /[^A-Za-z0-9]/.test(pw)) score++;
+  return score; // 0-4
+};
+const LABELS = ['Too short', 'Weak', 'Fair', 'Good', 'Strong'];
+const COLORS = ['bg-slate-200', 'bg-red-400', 'bg-amber-400', 'bg-emerald-400', 'bg-emerald-600'];
 
 const SignupPage = () => {
   const [name, setName] = useState('');
@@ -13,22 +27,17 @@ const SignupPage = () => {
   const [loading, setLoading] = useState(false);
   const { signup } = useAuth();
   const navigate = useNavigate();
+  const score = password ? strength(password) : 0;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters long.");
-      return;
-    }
+    if (password !== confirmPassword) return setError('Passwords do not match.');
+    if (password.length < 8) return setError('Password must be at least 8 characters long.');
     setError('');
     setLoading(true);
     try {
-      await signup(name, email, password);
-      navigate('/'); // Redirect to home page after successful signup
+      await signup(name.trim(), email.trim(), password);
+      navigate('/');
     } catch (err) {
       setError(err.message || 'Failed to sign up. Please try again.');
     } finally {
@@ -37,105 +46,38 @@ const SignupPage = () => {
   };
 
   return (
-    <div className="min-h-[calc(100vh-128px)] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-slate-100">
-      <div className="max-w-md w-full space-y-8 p-10 bg-white shadow-xl rounded-lg">
+    <AuthLayout
+      title="Create your account"
+      subtitle="Free access to the flood model, saved runs and feedback."
+      footer={<>Already have an account? <Link to="/login" className="font-semibold text-brand-700 hover:text-brand-600">Sign in</Link></>}
+    >
+      <form className="space-y-5" onSubmit={handleSubmit}>
+        {error && <div className="alert-error" role="alert">{error}</div>}
         <div>
-          <UserPlus className="mx-auto h-12 w-auto text-blue-600" />
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Create your account
-          </h2>
+          <label htmlFor="name" className="label">Full name</label>
+          <input id="name" name="name" type="text" autoComplete="name" required maxLength={80} className="input-field" placeholder="Jane Doe" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {error && (
-            <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded-md">
-              {error}
+        <div>
+          <label htmlFor="email-address-signup" className="label">Email address</label>
+          <input id="email-address-signup" name="email" type="email" autoComplete="email" required className="input-field" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        <div>
+          <PasswordInput id="password_signup" label="Password" autoComplete="new-password" placeholder="At least 8 characters" value={password} onChange={(e) => setPassword(e.target.value)} />
+          {password && (
+            <div className="mt-2" aria-live="polite">
+              <div className="flex gap-1">
+                {[1, 2, 3, 4].map((i) => <span key={i} className={`h-1.5 flex-1 rounded-full ${i <= score ? COLORS[score] : 'bg-slate-200'}`} />)}
+              </div>
+              <p className="mt-1 text-xs text-slate-500">Password strength: {LABELS[score]}</p>
             </div>
           )}
-          <div className="rounded-md shadow-sm">
-            <div className="mb-4">
-              <label htmlFor="name" className="sr-only">
-                Full name
-              </label>
-              <input
-                id="name"
-                name="name"
-                type="text"
-                autoComplete="name"
-                required
-                className="input-field appearance-none rounded-md relative block w-full px-3 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="Full name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-            <div className="mb-4">
-              <label htmlFor="email-address-signup" className="sr-only">
-                Email address
-              </label>
-              <input
-                id="email-address-signup"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                className="input-field appearance-none rounded-md relative block w-full px-3 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="Email address"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <div className="mb-4">
-              <label htmlFor="password_signup" className="sr-only"> {/* Changed ID */}
-                Password
-              </label>
-              <input
-                id="password_signup"
-                name="password"
-                type="password"
-                autoComplete="new-password"
-                required
-                className="input-field appearance-none rounded-md relative block w-full px-3 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="Password (min. 8 characters)"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="confirm-password" className="sr-only">
-                Confirm password
-              </label>
-              <input
-                id="confirm-password"
-                name="confirm-password"
-                type="password"
-                autoComplete="new-password"
-                required
-                className="input-field appearance-none rounded-md relative block w-full px-3 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="Confirm password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-300"
-            >
-              {loading ? 'Creating account...' : 'Create account'}
-            </button>
-          </div>
-        </form>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          Already have an account?{' '}
-          <Link to="/login" className="font-medium text-blue-600 hover:text-blue-500">
-            Sign in
-          </Link>
-        </p>
-      </div>
-    </div>
+        </div>
+        <PasswordInput id="confirm-password" label="Confirm password" autoComplete="new-password" placeholder="Repeat your password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+        <button type="submit" disabled={loading} className="btn-primary w-full py-3">
+          {loading ? <><Loader2 size={18} className="animate-spin" /> Creating account...</> : 'Create account'}
+        </button>
+      </form>
+    </AuthLayout>
   );
 };
 
